@@ -32,7 +32,7 @@ router.post('/login', [
     const otp = generateOTP();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
-    const user = await User.findOne({ email }).select('+otp +otpExpires +otpAttempts +otpLockedUntil');
+    let user = await User.findOne({ email }).select('+otp +otpExpires +otpAttempts +otpLockedUntil');
     if (user) {
       if (user.otpLockedUntil && user.otpLockedUntil > Date.now()) {
         const wait = Math.ceil((user.otpLockedUntil - Date.now()) / 60000);
