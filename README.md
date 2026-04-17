@@ -2,7 +2,7 @@
 
 SilentTalk is a next-generation messaging platform built for privacy, productivity, and commerce. It combines industry-standard End-to-End Encryption (E2EE) with tools like shared tasks, events, stories, and a built-in business store.
 
-![SilentTalk Hero](https://images.unsplash.com/photo-1611746872915-64382b5c76da?auto=format&fit=crop&q=80&w=1200)
+![SilentTalk Hero](https://img.freepik.com/premium-vector/chatting-messaging-man-woman-chatting-smartphone-hand-holding-mobile-phone-with-text-messages_136162-238.jpg)
 
 ## 🚀 Technology Stack
 
