@@ -1,0 +1,292 @@
+require('dotenv').config();
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const jwt = require('jsonwebtoken');
+const path = require('path');
+const fs = require('fs');
+const connectDB = require('./db');
+const Message = require('./models/Message');
+// ─── App Setup ──────────────────────────────────────────────────────────────
+const app = express();
+
+// Trust proxy (needed for accurate rate-limit by IP behind load balancers/nginx)
+app.set('trust proxy', 1);
+
+// Allowed origins — defined first so helmet CSP and CORS can both reference it
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174')
+  .split(',').map(o => o.trim());
+
+// Security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com'],
+      mediaSrc: ["'self'", 'blob:', 'https://res.cloudinary.com'],
+      connectSrc: ["'self'", 'ws:', 'wss:'].concat(allowedOrigins),
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+    }
+  }
+}));
+
+// CORS — strict origin check in production, permissive in dev
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || process.env.NODE_ENV !== 'production' || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin '${origin}' not allowed`));
+    }
+  },
+  credentials: true
+}));
+
+app.use(express.json({ limit: '10mb' })); // 10 MB cap — prevent JSON bomb
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
+
+// Global rate limiter
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'production' ? 150 : 500,
+  message: { message: 'Too many requests, try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use(globalLimiter);
+
+// Auth route strict rate limiter
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { message: 'Too many auth attempts. Try again in 15 minutes.' }
+});
+app.use('/api/auth', authLimiter);
+
+// ─── Database ────────────────────────────────────────────────────────────────
+if (process.env.MONGO_URI) connectDB();
+
+// ─── Static uploads ─────────────────────────────────────────────────────────
+const uploadsDir = path.join(__dirname, '../uploads');
+['stories', 'avatars', 'media'].forEach(d => {
+  fs.mkdirSync(path.join(uploadsDir, d), { recursive: true });
+});
+app.use('/uploads', express.static(uploadsDir));
+
+// ─── Routes ──────────────────────────────────────────────────────────────────
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/messages', require('./routes/messages'));
+app.use('/api/groups', require('./routes/groups'));
+app.use('/api/stories', require('./routes/stories'));
+app.use('/api/calls', require('./routes/calls'));
+app.use('/api/events', require('./routes/events'));
+app.use('/api/tasks', require('./routes/tasks'));
+app.use('/api/request-chat', require('./routes/requestChat'));
+app.use('/api/users', require('./routes/users'));
+app.use('/api/contacts', require('./routes/contacts'));
+app.use('/api/store', require('./routes/store'));
+app.use('/api/orders', require('./routes/orders'));
+
+// Health check
+app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
+
+// 404 fallback
+app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
+
+// Error handler — sanitize stack traces in production
+app.use((err, req, res, next) => {
+  const isDev = process.env.NODE_ENV !== 'production';
+  const status = err.status || err.statusCode || 500;
+  console.error(`[${new Date().toISOString()}] ${req.method} ${req.path} → ${status}:`, err.message);
+  res.status(status).json({
+    message: err.message || 'Internal Server Error',
+    // Only expose stack in dev
+    ...(isDev && status === 500 ? { stack: err.stack } : {})
+  });
+});
+
+// ─── Socket.io ───────────────────────────────────────────────────────────────
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.NODE_ENV !== 'production' ? true : allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
+});
+app.set('io', io);
+
+// Socket authentication middleware
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) return next(new Error('Authentication required'));
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.userId = decoded.id;
+    next();
+  } catch {
+    next(new Error('Invalid token'));
+  }
+});
+
+// Track online users
+const onlineUsers = new Map(); // userId -> socketId
+
+const User = require('./models/User');
+
+io.on('connection', async (socket) => {
+  const userId = socket.userId;
+  onlineUsers.set(userId.toString(), socket.id);
+
+  // Join personal room
+  socket.join(`user:${userId}`);
+
+  // Update online status
+  try {
+    await User.findByIdAndUpdate(userId, { isOnline: true });
+  } catch (e) {}
+
+  // Broadcast presence to all connected users
+  socket.broadcast.emit('user:online', { userId });
+
+  // Join group rooms
+  socket.on('join:groups', (groupIds) => {
+    if (Array.isArray(groupIds)) {
+      groupIds.forEach(gId => socket.join(`group:${gId}`));
+    }
+  });
+
+  // ── Private message relay ────────────────────────────────────────────────
+  socket.on('message:send', (data) => {
+    // data: { receiverId, groupId, messageId, ciphertext, nonce, mediaUrl, mediaType, replyTo, tempId }
+    if (data.receiverId) {
+      io.to(`user:${data.receiverId}`).emit('message:receive', { ...data, senderId: userId });
+    } else if (data.groupId) {
+      socket.to(`group:${data.groupId}`).emit('message:receive', { ...data, senderId: userId });
+    }
+  });
+
+  // ── Message ID confirmation (after DB save) ────────────────────────────
+  // Lets the receiver replace their temp _id with the real DB messageId
+  socket.on('message:confirm', ({ receiverId, groupId, tempId, messageId }) => {
+    if (receiverId) {
+      io.to(`user:${receiverId}`).emit('message:confirmed', { tempId, messageId, senderId: userId });
+    } else if (groupId) {
+      socket.to(`group:${groupId}`).emit('message:confirmed', { tempId, messageId, senderId: userId });
+    }
+  });
+
+  // ── Message status ───────────────────────────────────────────────────────
+  socket.on('message:delivered', async ({ senderId, messageId }) => {
+    try {
+      await Message.updateOne({ _id: messageId, status: 'sent' }, { status: 'delivered' });
+      io.to(`user:${senderId}`).emit('message:status', { messageId, status: 'delivered' });
+    } catch(e) {}
+  });
+
+  socket.on('message:read', async ({ senderId, messageId }) => {
+    try {
+      await Message.updateOne({ _id: messageId, status: { $ne: 'read' } }, { status: 'read' });
+      io.to(`user:${senderId}`).emit('message:status', { messageId, status: 'read' });
+    } catch(e) {}
+  });
+
+  socket.on('message:read_all', async ({ contactId }) => {
+    try {
+      // Mark all messages FROM contactId TO current user as read
+      await Message.updateMany(
+        { senderId: contactId, receiverId: userId, status: { $ne: 'read' } },
+        { status: 'read' }
+      );
+      // Notify the reader's other sessions to clear badges
+      io.to(`user:${userId}`).emit('message:read_all_confirmed', { contactId });
+      // Notify the sender that their messages have been read
+      io.to(`user:${contactId}`).emit('message:status_bulk', { readerId: userId, status: 'read' });
+    } catch(e) {}
+  });
+
+  // ── Reaction relay ───────────────────────────────────────────────────────
+  socket.on('message:react', (data) => {
+    const room = data.groupId ? `group:${data.groupId}` : `user:${data.receiverId}`;
+    io.to(room).emit('message:reacted', { ...data, reactorId: userId });
+  });
+
+  // ── Message deletion relay ───────────────────────────────────────────────
+  socket.on('message:delete', (data) => {
+    console.log('Relaying message deletion:', data.messageId);
+    const room = data.groupId ? `group:${data.groupId}` : `user:${data.receiverId}`;
+    io.to(room).emit('message:deleted', { messageId: data.messageId });
+  });
+
+  // ── Typing indicators ────────────────────────────────────────────────────
+  socket.on('typing:start', ({ to, groupId }) => {
+    const room = groupId ? `group:${groupId}` : `user:${to}`;
+    socket.to(room).emit('typing:user', { userId, groupId });
+  });
+
+  socket.on('typing:stop', ({ to, groupId }) => {
+    const room = groupId ? `group:${groupId}` : `user:${to}`;
+    socket.to(room).emit('typing:stopped', { userId, groupId });
+  });
+
+  // ── Story view notification ──────────────────────────────────────────────
+  socket.on('story:viewed', ({ storyOwnerId, storyId }) => {
+    io.to(`user:${storyOwnerId}`).emit('story:view', { viewerId: userId, storyId });
+  });
+
+  // ── Request Chat notifications ───────────────────────────────────────────
+  socket.on('request-chat:new', ({ targetId, requestId }) => {
+    io.to(`user:${targetId}`).emit('request-chat:incoming', { requestId, requesterId: userId });
+  });
+
+  socket.on('request-chat:accepted', ({ requesterId, requestId, shadowToken, expiresAt }) => {
+    io.to(`user:${requesterId}`).emit('request-chat:granted', { requestId, shadowToken, expiresAt });
+  });
+
+  socket.on('request-chat:revoked', ({ targetId, requestId }) => {
+    io.to(`user:${targetId}`).emit('request-chat:access-revoked', { requestId });
+  });
+
+  // ── WebRTC Call Signaling ─────────────────────────────────────────────────
+  socket.on('call:offer', ({ to, offer, callType }) => {
+    io.to(`user:${to}`).emit('call:incoming', { from: userId, offer, callType });
+  });
+
+  socket.on('call:answer', ({ to, answer }) => {
+    io.to(`user:${to}`).emit('call:answered', { from: userId, answer });
+  });
+
+  socket.on('call:ice', ({ to, candidate }) => {
+    io.to(`user:${to}`).emit('call:ice', { from: userId, candidate });
+  });
+
+  socket.on('call:end', ({ to }) => {
+    io.to(`user:${to}`).emit('call:ended', { from: userId });
+  });
+
+  socket.on('call:reject', ({ to }) => {
+    io.to(`user:${to}`).emit('call:rejected', { from: userId });
+  });
+
+  // ── Disconnect ───────────────────────────────────────────────────────────
+  socket.on('disconnect', async () => {
+    onlineUsers.delete(userId.toString());
+    socket.broadcast.emit('user:offline', { userId });
+    try {
+      await User.findByIdAndUpdate(userId, { isOnline: false, lastSeen: new Date() });
+    } catch (e) {}
+  });
+});
+
+// ─── Listen ──────────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => {
+  console.log(`\n🔒 SilentTalk backend running on port ${PORT}`);
+  console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`   MongoDB: ${process.env.MONGO_URI ? 'Connected' : 'Not configured'}\n`);
+});
