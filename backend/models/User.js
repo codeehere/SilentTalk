@@ -84,16 +84,20 @@ const userSchema = new mongoose.Schema({
     contactEmail: { type: String, maxlength: 100, default: '' },
     contactPhone: { type: String, maxlength: 30, default: '' },
     acceptedPayments: { type: [String], default: ['Cash on Delivery'] }
-  }
+  },
+  privacyPin: { type: String, select: false }
 }, { timestamps: true });
 
-// Hash OTP before saving
+// Hash OTP and Privacy PIN before saving
 userSchema.pre('save', async function() {
   if (this.isModified('otp') && this.otp) {
     this.otp = await bcrypt.hash(this.otp, 10);
   }
   if (this.isModified('refreshToken') && this.refreshToken) {
     this.refreshToken = await bcrypt.hash(this.refreshToken, 10);
+  }
+  if (this.isModified('privacyPin') && this.privacyPin) {
+    this.privacyPin = await bcrypt.hash(this.privacyPin, 10);
   }
 });
 
@@ -103,6 +107,10 @@ userSchema.methods.compareOtp = async function(candidateOtp) {
 
 userSchema.methods.compareRefreshToken = async function(token) {
   return bcrypt.compare(token, this.refreshToken);
+};
+
+userSchema.methods.comparePin = async function(candidatePin) {
+  return bcrypt.compare(candidatePin, this.privacyPin);
 };
 
 // Indexes

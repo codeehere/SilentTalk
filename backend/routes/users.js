@@ -312,4 +312,41 @@ router.put('/archive/:id', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
+// ─── Privacy PIN Routes ──────────────────────────────────────────────────────
+
+// PUT /api/users/privacy-pin — set or update 4-digit PIN
+router.put('/privacy-pin', protect, async (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin || pin.length !== 4 || isNaN(pin)) {
+      return res.status(400).json({ message: 'Must be a 4-digit numeric PIN' });
+    }
+    const user = await User.findById(req.user._id);
+    user.privacyPin = pin;
+    await user.save();
+    res.json({ message: 'Privacy PIN saved successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// POST /api/users/verify-pin — verify PIN for unlocking chats
+router.post('/verify-pin', protect, async (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin) return res.status(400).json({ message: 'PIN required' });
+    
+    // Explicitly select privacyPin for comparison
+    const user = await User.findById(req.user._id).select('+privacyPin');
+    if (!user.privacyPin) return res.status(400).json({ message: 'No PIN set' });
+
+    const isMatch = await user.comparePin(pin);
+    if (!isMatch) return res.status(401).json({ message: 'Incorrect PIN' });
+
+    res.json({ message: 'Success' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;
