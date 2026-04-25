@@ -10,25 +10,65 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [slowHint, setSlowHint] = useState(false);   // Railway wakeup hint
+  const [resendCooldown, setResendCooldown] = useState(0); // seconds until resend allowed
   const otpRefs = useRef([]);
   const inputRef = useRef(null);
+  const slowTimer = useRef(null);
+  const cooldownRef = useRef(null);
 
   useEffect(() => {
     const t = setTimeout(() => setLoaded(true), 60);
     return () => clearTimeout(t);
   }, []);
 
+  const startResendCooldown = () => {
+    setResendCooldown(60);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown(prev => {
+        if (prev <= 1) { clearInterval(cooldownRef.current); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
   const handleEmailSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
+    setSlowHint(false);
+    // Show "waking up" hint after 5s — Railway free tier cold start
+    slowTimer.current = setTimeout(() => setSlowHint(true), 5000);
     try {
-      const result = await login(email);
+      await login(email);
       setStep('otp');
+      startResendCooldown();
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
+      clearTimeout(slowTimer.current);
+      setSlowHint(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    setError('');
+    setLoading(true);
+    setSlowHint(false);
+    slowTimer.current = setTimeout(() => setSlowHint(true), 5000);
+    try {
+      await login(email);
+      setOtp(['', '', '', '', '', '']);
+      otpRefs.current[0]?.focus();
+      startResendCooldown();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+      clearTimeout(slowTimer.current);
+      setSlowHint(false);
     }
   };
 
@@ -119,6 +159,19 @@ export default function Login() {
               </div>
             </div>
 
+            {loading && slowHint && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: 'rgba(245,158,11,0.08)',
+                border: '1px solid rgba(245,158,11,0.25)',
+                borderRadius: 10, padding: '10px 14px', fontSize: 12,
+                color: 'rgba(245,158,11,0.9)', lineHeight: 1.5, marginTop: -6
+              }}>
+                <FiRefreshCw size={13} className="lx-spin" style={{flexShrink:0}} />
+                <span><strong>Server is waking up</strong> — Railway free tier may take ~30s on first request. Please wait…</span>
+              </div>
+            )}
+
             {error && <p className="lx-error">{error}</p>}
 
             <button className="lx-btn-primary" type="submit" disabled={loading}>
@@ -166,9 +219,21 @@ export default function Login() {
                 : <><FiLock size={15} /><span>Verify &amp; Sign In</span></>}
             </button>
 
+            {/* Resend code button with cooldown */}
             <button
               className="lx-btn-ghost"
-              onClick={() => { setStep('email'); setOtp(['','','','','','']); setError(''); setDevOtp(''); }}
+              onClick={handleResend}
+              disabled={loading || resendCooldown > 0}
+              style={{ fontSize: 13 }}
+            >
+              {resendCooldown > 0
+                ? `Resend code in ${resendCooldown}s`
+                : <><FiRefreshCw size={13} /> Resend Code</>}
+            </button>
+
+            <button
+              className="lx-btn-ghost"
+              onClick={() => { setStep('email'); setOtp(['','','','','','']); setError(''); clearInterval(cooldownRef.current); setResendCooldown(0); }}
             >
               <FiArrowLeft size={14} /> Back to email
             </button>

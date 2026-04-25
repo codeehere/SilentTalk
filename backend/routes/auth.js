@@ -30,7 +30,7 @@ router.post('/login', [
   try {
     const { email } = req.body;
     const otp = generateOTP();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    const otpExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 min — accounts for Railway free-tier cold start delays
 
     let user = await User.findOne({ email }).select('+otp +otpExpires +otpAttempts +otpLockedUntil');
     if (user) {
@@ -72,7 +72,7 @@ router.post('/login', [
         <tr>
           <td style="padding:40px;">
             <h2 style="margin:0 0 8px;color:#f0f2ff;font-size:22px;font-weight:700;">Verify Your Identity</h2>
-            <p style="margin:0 0 28px;color:#9ba3c0;font-size:14px;line-height:1.6;">Use the one-time code below to securely sign in to your SilentTalk account. This code expires in <strong style="color:#c2b9ff;">10 minutes</strong>.</p>
+            <p style="margin:0 0 28px;color:#9ba3c0;font-size:14px;line-height:1.6;">Use the one-time code below to securely sign in to your SilentTalk account. This code expires in <strong style="color:#c2b9ff;">30 minutes</strong>.</p>
 
             <!-- OTP Box -->
             <div style="background:#13161e;border:2px solid #6d5be6;border-radius:14px;padding:28px;text-align:center;margin-bottom:28px;">
@@ -122,7 +122,7 @@ router.post('/login', [
     await sendEmail({
       email,
       subject: '🔐 SilentTalk — Your Verification Code',
-      message: `Your SilentTalk one-time code is: ${otp}\n\nThis code expires in 10 minutes. Never share it with anyone.`,
+      message: `Your SilentTalk one-time code is: ${otp}\n\nThis code expires in 30 minutes. Never share it with anyone.`,
       html: otpHtml
     });
 
