@@ -98,9 +98,23 @@ function AppInner() {
     };
     loadData();
 
+    // Fetch and join group rooms for global notifications
+    const joinGroups = async () => {
+      try {
+        const res = await authFetch(`${API}/api/groups`);
+        if (res.ok) {
+          const groups = await res.json();
+          if (groups && groups.length > 0) {
+            emit('join:groups', groups.map(g => g._id));
+          }
+        }
+      } catch {}
+    };
+    joinGroups();
+
     window.addEventListener('chat-metadata-updated', loadData);
     return () => window.removeEventListener('chat-metadata-updated', loadData);
-  }, [user]);
+  }, [user, API, authFetch, emit]);
 
   // Incoming call listener
   useEffect(() => {
@@ -341,6 +355,7 @@ function AppInner() {
     return (
       <ChatWindow
         contact={activeContact}
+        isGroup={activeContact?.isGroup}
         onStartCall={(contact, callType) => {
           if (callType === 'close') setActiveContact(null);
           else setActiveCall({ contact, callType, incoming: false });
