@@ -8,7 +8,7 @@ const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const fs = require('fs');
-const connectDB = require('./db');
+const { connectDB, isDBReady } = require('./db');
 const Message = require('./models/Message');
 // ─── App Setup ──────────────────────────────────────────────────────────────
 const app = express();
@@ -68,13 +68,17 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth', authLimiter);
 
-// ─── Database ────────────────────────────────────────────────────────────────
-// Exit immediately if MONGO_URI is not configured — no point running without a DB
-if (!process.env.MONGO_URI) {
-  console.error('FATAL: MONGO_URI environment variable is not set.');
-  process.exit(1);
-}
-connectDB();
+// ─── DB-readiness gate ───────────────────────────────────────────────────────
+// Return 503 (not 500) if a request arrives before MongoDB is connected.
+// This prevents misleading "Internal Server Error" responses during cold-start.
+app.use('/api', (req, res, next) => {
+  if (!isDBReady()) {
+    return res.status(503).json({
+      message: 'Server is starting up, please retry in a few seconds.'
+    });
+  }
+  next();
+});
 
 // ─── Static uploads ─────────────────────────────────────────────────────────
 // NOTE: Railway has an ephemeral filesystem — use Cloudinary for persistent media.
@@ -294,10 +298,16 @@ io.on('connection', async (socket) => {
   });
 });
 
-// ─── Listen ──────────────────────────────────────────────────────────────────
+// ─── Listen (only after DB is ready) ────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`\n🔒 SilentTalk backend running on port ${PORT}`);
-  console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`   MongoDB: ${process.env.MONGO_URI ? 'Connected' : 'Not configured'}\n`);
-});
+
+(async () => {
+  // connectDB retries with exponential backoff and exits on final failure
+  await connectDB();
+
+  server.listen(PORT, () => {
+    console.log(`\n🔒 SilentTalk backend running on port ${PORT}`);
+    console.log(`   Environment : ${process.env.NODE_ENV || 'development'}`);
+    console.log(`   MongoDB     : ready\n`);
+  });
+})();

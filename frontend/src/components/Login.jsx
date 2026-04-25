@@ -37,18 +37,25 @@ export default function Login() {
     setError('');
     setLoading(true);
     setSlowHint(false);
-    // Show "waking up" hint after 5s — Railway free tier cold start
-    slowTimer.current = setTimeout(() => setSlowHint(true), 5000);
+    // Show "waking up" hint after 3s — Railway free tier cold start
+    slowTimer.current = setTimeout(() => setSlowHint(true), 3000);
     try {
       await login(email);
       setStep('otp');
       startResendCooldown();
     } catch (err) {
-      setError(err.message);
+      // If it's a wakeup-timeout error, keep the banner; don't show a red error
+      if (err.isWakingUp) {
+        setSlowHint(false);
+        setError(err.message);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
       clearTimeout(slowTimer.current);
-      setSlowHint(false);
+      // Only hide the banner if we're NOT showing a wake-up error
+      if (!error) setSlowHint(false);
     }
   };
 
@@ -57,7 +64,7 @@ export default function Login() {
     setError('');
     setLoading(true);
     setSlowHint(false);
-    slowTimer.current = setTimeout(() => setSlowHint(true), 5000);
+    slowTimer.current = setTimeout(() => setSlowHint(true), 3000);
     try {
       await login(email);
       setOtp(['', '', '', '', '', '']);
@@ -168,7 +175,7 @@ export default function Login() {
                 color: 'rgba(245,158,11,0.9)', lineHeight: 1.5, marginTop: -6
               }}>
                 <FiRefreshCw size={13} className="lx-spin" style={{flexShrink:0}} />
-                <span><strong>Server is waking up</strong> — Railway free tier may take ~30s on first request. Please wait…</span>
+                <span><strong>Server is waking up</strong> — Railway free tier may take ~30s on first request. Retrying automatically…</span>
               </div>
             )}
 

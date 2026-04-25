@@ -16,6 +16,37 @@ async function safeJson(res) {
   }
 }
 
+// Retry a fetch call when the server is still starting up (503).
+// Railway free-tier cold-starts can take 20-40 s; this keeps retrying
+// instead of surfacing a confusing "Internal Server Error" to the user.
+async function fetchWithWakeRetry(url, options, { maxRetries = 8, retryDelayMs = 4000 } = {}) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let res;
+    try {
+      res = await fetch(url, options);
+    } catch (networkErr) {
+      // Hard network failure (server totally down) — only retry a couple of times
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, retryDelayMs));
+        continue;
+      }
+      throw networkErr;
+    }
+
+    // 503 = our DB-readiness gate replied — keep waiting
+    if (res.status === 503 && attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, retryDelayMs));
+      continue;
+    }
+
+    return res;
+  }
+  // All retries exhausted — throw a recognisable sentinel
+  const err = new Error('Server is taking too long to wake up. Please try again in a moment.');
+  err.isWakingUp = true;
+  throw err;
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -33,7 +64,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async (email) => {
-    const res = await fetch(`${API}/api/auth/login`, {
+    // fetchWithWakeRetry handles 503 (DB not ready) automatically
+    const res = await fetchWithWakeRetry(`${API}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email })
@@ -44,7 +76,7 @@ export function AuthProvider({ children }) {
   };
 
   const verify = async (email, otp) => {
-    const res = await fetch(`${API}/api/auth/verify`, {
+    const res = await fetchWithWakeRetry(`${API}/api/auth/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, otp })
