@@ -71,7 +71,7 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
     };
 
     const onEvent = (data) => {
-      const incomingId = data.senderId || data.from; // 'from' from call:incoming, 'senderId' from message:receive
+      const incomingId = data.groupId || data.senderId || data.from; // group, message, or call
       if (!incomingId) return;
       setContacts(prev => {
         const updated = [...prev];
@@ -114,10 +114,27 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
 
   const fetchContacts = async () => {
     try {
-      const res = await authFetch(`${API}/api/users/contacts`);
-      if (res.ok) {
-        const data = await res.json();
+      const [contactsRes, groupsRes] = await Promise.all([
+        authFetch(`${API}/api/users/contacts`),
+        authFetch(`${API}/api/groups`)
+      ]);
+      
+      if (contactsRes.ok) {
+        const data = await contactsRes.json();
         let fetchedContacts = data.contacts || [];
+
+        if (groupsRes.ok) {
+          const groups = await groupsRes.json();
+          const mappedGroups = groups.map(g => ({
+            ...g,
+            isGroup: true,
+            username: g.name,
+            avatar: g.avatarUrl,
+            uniqueId: g.inviteCode
+          }));
+          fetchedContacts = [...fetchedContacts, ...mappedGroups];
+        }
+
         // Prevent active contact from showing unread badge if fetched that way
         if (activeContactId) {
           fetchedContacts = fetchedContacts.map(c => c._id === activeContactId ? { ...c, unreadCount: 0 } : c);
