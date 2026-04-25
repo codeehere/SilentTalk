@@ -21,6 +21,15 @@ import StoreFront from './StoreFront';
 const EMOJIS = ['thumbup','heart','laugh','wow','cry','fire','clap','party'];
 const EMOJI_CHARS = { thumbup:'👍', heart:'❤️', laugh:'😂', wow:'😮', cry:'😢', fire:'🔥', clap:'👏', party:'🎉' };
 
+// Fix malformed URLs (missing colon)
+const fixUrl = (url) => {
+  if (!url) return '';
+  let fixed = url;
+  if (fixed.startsWith('https//')) fixed = fixed.replace('https//', 'https://');
+  if (fixed.startsWith('http//')) fixed = fixed.replace('http//', 'http://');
+  return fixed;
+};
+
 // ── Order Status Config ────────────────────────────────────────────────────
 const ORDER_STATUS_CONF = {
   Accepted:         { icon: FiCheck,        color: '#3b82f6', glow: 'rgba(59,130,246,0.4)',  label: 'Accepted'         },
@@ -991,22 +1000,22 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
                           <div style={{ marginTop: text ? 6 : 0 }}>
                             {msg.mediaType === 'image' && (
                               <img
-                                src={msg.mediaUrl}
+                                src={fixUrl(msg.mediaUrl)}
                                 alt=""
                                 style={{ maxWidth: 240, borderRadius: 8, display: 'block', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.08)' }}
-                                onClick={() => setViewMedia({ url: msg.mediaUrl, type: 'image' })}
+                                onClick={() => setViewMedia({ url: fixUrl(msg.mediaUrl), type: 'image' })}
                               />
                             )}
                             {msg.mediaType === 'video' && (
                               <video
-                                src={msg.mediaUrl}
+                                src={fixUrl(msg.mediaUrl)}
                                 controls
                                 style={{ maxWidth: 240, borderRadius: 10, display: 'block', cursor: 'pointer' }}
-                                onPlay={e => { e.preventDefault(); setViewMedia({ url: msg.mediaUrl, type: 'video' }); e.target.pause(); }}
+                                onPlay={e => { e.preventDefault(); setViewMedia({ url: fixUrl(msg.mediaUrl), type: 'video' }); e.target.pause(); }}
                               />
                             )}
                             {msg.mediaType === 'audio' && (
-                              <AudioPlayer src={msg.mediaUrl} isMine={mine} />
+                              <AudioPlayer src={fixUrl(msg.mediaUrl)} isMine={mine} />
                             )}
                             {msg.mediaType === 'sending_audio' && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-elevated)', padding: '8px 12px', borderRadius: 24, width: 220 }}>
@@ -1032,7 +1041,7 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
                                   </div>
                                 </div>
                                 <a 
-                                  href={msg.mediaUrl} 
+                                  href={fixUrl(msg.mediaUrl)} 
                                   target="_blank" 
                                   rel="noreferrer" 
                                   className="shared-item-action" 

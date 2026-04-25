@@ -3,6 +3,22 @@ import { FiPlus, FiX, FiChevronLeft, FiChevronRight, FiEye, FiBook } from 'react
 import { useAuth } from '../contexts/AuthContext';
 import ImageCropper from './ImageCropper';
 
+// mediaUrl may be a full Cloudinary URL or a relative /uploads/... path
+const resolveMedia = (url, API) => {
+  if (!url) return '';
+  // Fix malformed protocol schemes (missing colon)
+  if (url.startsWith('https//')) url = url.replace('https//', 'https://');
+  if (url.startsWith('http//')) url = url.replace('http//', 'http://');
+
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) return url;
+  
+  // Prevent missing slashes when prepending API
+  if (API && !API.endsWith('/') && !url.startsWith('/')) {
+    return `${API}/${url}`;
+  }
+  return `${API}${url}`;
+};
+
 export default function Stories({ onBack }) {
   const { authFetch, API, user } = useAuth();
   const [stories, setStories] = useState([]);
@@ -146,7 +162,7 @@ export default function Stories({ onBack }) {
                   {/* Blurred story preview as background */}
                   {previewItem?.mediaType !== 'video' && previewItem?.mediaUrl && (
                     <img
-                      src={`${API}${previewItem.mediaUrl}`}
+                      src={resolveMedia(previewItem.mediaUrl, API)}
                       alt=""
                       className="story-card-bg-img"
                     />
@@ -252,7 +268,7 @@ function StoryViewer({ group, index, onNext, onPrev, onClose, API }) {
         {item?.mediaType === 'video'
           ? <video
               key={item._id}
-              src={`${API}${item.mediaUrl}`}
+              src={resolveMedia(item.mediaUrl, API)}
               autoPlay
               playsInline
               muted={false}
@@ -261,7 +277,7 @@ function StoryViewer({ group, index, onNext, onPrev, onClose, API }) {
             />
           : <img
               key={item?._id}
-              src={`${API}${item?.mediaUrl}`}
+              src={resolveMedia(item?.mediaUrl, API)}
               alt=""
               className="story-viewer-img"
             />
