@@ -50,26 +50,27 @@ router.put('/profile', protect, async (req, res) => {
   }
 });
 
-// Get public store profile & catalog (for consumers)
-router.get('/:userId', protect, async (req, res) => {
+// Get own products (for business owner management)
+// IMPORTANT: This must come BEFORE /:userId to avoid Express treating "products" as a userId
+router.get('/products/me', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId).select('username avatar uniqueId isBusiness businessProfile');
-    if (!user || user.businessProfile?.storeStatus === 'closed') {
-      return res.status(404).json({ message: 'Store not found or is closed' });
-    }
-    
-    const products = await Product.find({ userId: req.params.userId });
-    res.json({ profile: user, products });
+    const products = await Product.find({ userId: req.user._id }).sort('-createdAt');
+    res.json(products);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// Get own products (for business owner management)
-router.get('/products/me', protect, async (req, res) => {
+// Get public store profile & catalog (for consumers)
+router.get('/:userId', protect, async (req, res) => {
   try {
-    const products = await Product.find({ userId: req.user._id }).sort('-createdAt');
-    res.json(products);
+    const user = await User.findById(req.params.userId).select('username avatar uniqueId isBusiness businessProfile');
+    if (!user || !user.isBusiness || user.businessProfile?.storeStatus === 'closed') {
+      return res.status(404).json({ message: 'Store not found or is closed' });
+    }
+    
+    const products = await Product.find({ userId: req.params.userId });
+    res.json({ profile: user, products });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -120,12 +121,8 @@ router.delete('/products/:id', protect, async (req, res) => {
 router.post('/products/media', protect, uploadMedia.single('file'), async (req, res) => {
   try {
     if (!req.file) throw new Error('No file uploaded');
-    const b64 = Buffer.from(req.file.buffer).toString('base64');
-    const dataURI = 'data:' + req.file.mimetype + ';base64,' + b64;
-    
-    // Auto detects resource type in Cloudinary util
     const resourceType = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
-    const result = await uploadToCloudinary(dataURI, 'products', resourceType);
+    const result = await uploadToCloudinary(req.file.buffer, 'products', resourceType);
     res.json({ mediaUrl: result.url, mediaType: resourceType });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -136,13 +133,11 @@ router.post('/products/media', protect, uploadMedia.single('file'), async (req, 
 router.post('/profile/logo', protect, uploadImage.single('image'), async (req, res) => {
   try {
     if (!req.file) throw new Error('No image uploaded');
-    const b64 = Buffer.from(req.file.buffer).toString('base64');
-    const dataURI = 'data:' + req.file.mimetype + ';base64,' + b64;
-    const result = await uploadToCloudinary(dataURI, 'business_logos');
+    const result = await uploadToCloudinary(req.file.buffer, 'business_logos', 'image');
     const user = await User.findById(req.user._id);
     if (!user.businessProfile) user.businessProfile = {};
     user.businessProfile.logo = result.url;
-    user.markModified('businessProfile'); // ← required for nested objects
+    user.markModified('businessProfile');
     await user.save();
     res.json({ logoUrl: result.url });
   } catch (err) {
@@ -154,13 +149,11 @@ router.post('/profile/logo', protect, uploadImage.single('image'), async (req, r
 router.post('/profile/banner', protect, uploadImage.single('image'), async (req, res) => {
   try {
     if (!req.file) throw new Error('No image uploaded');
-    const b64 = Buffer.from(req.file.buffer).toString('base64');
-    const dataURI = 'data:' + req.file.mimetype + ';base64,' + b64;
-    const result = await uploadToCloudinary(dataURI, 'business_banners');
+    const result = await uploadToCloudinary(req.file.buffer, 'business_banners', 'image');
     const user = await User.findById(req.user._id);
     if (!user.businessProfile) user.businessProfile = {};
     user.businessProfile.banner = result.url;
-    user.markModified('businessProfile'); // ← required for nested objects
+    user.markModified('businessProfile');
     await user.save();
     res.json({ bannerUrl: result.url });
   } catch (err) {

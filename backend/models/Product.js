@@ -30,6 +30,7 @@ const productSchema = new mongoose.Schema({
     url: String,
     type: { type: String, enum: ['image', 'video'] }
   }],
+  imageUrl: { type: String, default: '' }, // Legacy single image URL fallback
   inStock: { type: Boolean, default: true },
   stockQuantity: { type: Number, default: -1 },
   isDigital: { type: Boolean, default: false },

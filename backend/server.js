@@ -69,13 +69,24 @@ const authLimiter = rateLimit({
 app.use('/api/auth', authLimiter);
 
 // ─── Database ────────────────────────────────────────────────────────────────
-if (process.env.MONGO_URI) connectDB();
+// Exit immediately if MONGO_URI is not configured — no point running without a DB
+if (!process.env.MONGO_URI) {
+  console.error('FATAL: MONGO_URI environment variable is not set.');
+  process.exit(1);
+}
+connectDB();
 
 // ─── Static uploads ─────────────────────────────────────────────────────────
-const uploadsDir = path.join(__dirname, '../uploads');
-['stories', 'avatars', 'media'].forEach(d => {
-  fs.mkdirSync(path.join(uploadsDir, d), { recursive: true });
-});
+// NOTE: Railway has an ephemeral filesystem — use Cloudinary for persistent media.
+// This local dir is only used as a fallback for stories in dev.
+const uploadsDir = path.join(__dirname, 'uploads');
+try {
+  ['stories', 'avatars', 'media'].forEach(d => {
+    fs.mkdirSync(path.join(uploadsDir, d), { recursive: true });
+  });
+} catch (e) {
+  console.warn('Could not create uploads dirs (ok on read-only FS):', e.message);
+}
 app.use('/uploads', express.static(uploadsDir));
 
 // ─── Routes ──────────────────────────────────────────────────────────────────

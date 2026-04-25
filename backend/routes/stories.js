@@ -1,22 +1,16 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
 const { body, validationResult } = require('express-validator');
 const Story = require('../models/Story');
 const User = require('../models/User');
 const { protect } = require('../middleware/authMiddleware');
+const { uploadToCloudinary } = require('../utils/cloudinary');
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, '../../uploads/stories')),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `story-${req.user._id}-${Date.now()}${ext}`);
-  }
-});
+// Memory storage — persisted via Cloudinary (disk storage breaks on Railway)
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
   fileFilter: (req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm'];
@@ -46,10 +40,11 @@ router.post('/', protect, upload.single('media'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'Media file required' });
     const mediaType = req.file.mimetype.startsWith('video') ? 'video' : 'image';
-    const mediaUrl = `/uploads/stories/${req.file.filename}`;
+    const resourceType = mediaType === 'video' ? 'video' : 'image';
+    const { url } = await uploadToCloudinary(req.file.buffer, 'stories', resourceType);
     const story = await Story.create({
       userId: req.user._id,
-      mediaUrl,
+      mediaUrl: url,
       mediaType,
       caption: req.body.caption || ''
     });
