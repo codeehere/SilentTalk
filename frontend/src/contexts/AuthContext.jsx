@@ -72,6 +72,7 @@ export function AuthProvider({ children }) {
     });
     const data = await safeJson(res);
     if (!res.ok) throw new Error(data?.message || `Server error (${res.status}) — is the backend running?`);
+    // Return full data so Login.jsx can read tempCode / emailDelivered
     return data;
   };
 

@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { FiLock, FiMail, FiArrowRight, FiRefreshCw, FiShield, FiArrowLeft } from 'react-icons/fi';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { FiLock, FiMail, FiArrowRight, FiRefreshCw, FiShield, FiArrowLeft, FiAlertTriangle, FiCopy, FiCheck } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
@@ -10,8 +10,12 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
-  const [slowHint, setSlowHint] = useState(false);   // Railway wakeup hint
-  const [resendCooldown, setResendCooldown] = useState(0); // seconds until resend allowed
+  const [slowHint, setSlowHint] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  // Dev-mode temp code state
+  const [tempCode, setTempCode] = useState('');
+  const [showDevModal, setShowDevModal] = useState(false);
+  const [copied, setCopied] = useState(false);
   const otpRefs = useRef([]);
   const inputRef = useRef(null);
   const slowTimer = useRef(null);
@@ -32,31 +36,48 @@ export default function Login() {
     }, 1000);
   };
 
+  const fillOtpFromCode = useCallback((code) => {
+    const digits = code.split('');
+    setOtp(digits);
+    // focus last box
+    setTimeout(() => otpRefs.current[5]?.focus(), 80);
+  }, []);
+
   const handleEmailSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     setSlowHint(false);
-    // Show "waking up" hint after 3s — Railway free tier cold start
     slowTimer.current = setTimeout(() => setSlowHint(true), 3000);
     try {
-      await login(email);
+      const data = await login(email);
       setStep('otp');
       startResendCooldown();
-    } catch (err) {
-      // If it's a wakeup-timeout error, keep the banner; don't show a red error
-      if (err.isWakingUp) {
-        setSlowHint(false);
-        setError(err.message);
-      } else {
-        setError(err.message);
+      // Dev mode: SMTP not configured — show code on screen
+      if (data?.tempCode) {
+        setTempCode(data.tempCode);
+        fillOtpFromCode(data.tempCode);
+        const warned = sessionStorage.getItem('st_smtp_warned');
+        if (!warned) setShowDevModal(true);
       }
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
       clearTimeout(slowTimer.current);
-      // Only hide the banner if we're NOT showing a wake-up error
-      if (!error) setSlowHint(false);
+      setSlowHint(false);
     }
+  };
+
+  const dismissDevModal = () => {
+    sessionStorage.setItem('st_smtp_warned', '1');
+    setShowDevModal(false);
+  };
+
+  const copyCode = () => {
+    navigator.clipboard.writeText(tempCode).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleResend = async () => {
@@ -66,10 +87,17 @@ export default function Login() {
     setSlowHint(false);
     slowTimer.current = setTimeout(() => setSlowHint(true), 3000);
     try {
-      await login(email);
+      const data = await login(email);
       setOtp(['', '', '', '', '', '']);
-      otpRefs.current[0]?.focus();
       startResendCooldown();
+      if (data?.tempCode) {
+        setTempCode(data.tempCode);
+        fillOtpFromCode(data.tempCode);
+        const warned = sessionStorage.getItem('st_smtp_warned');
+        if (!warned) setShowDevModal(true);
+      } else {
+        otpRefs.current[0]?.focus();
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -132,6 +160,29 @@ export default function Login() {
         <div className="lx-grid" />
       </div>
 
+      {/* Dev-mode warning modal — only shown once per session */}
+      {showDevModal && (
+        <div className="lx-modal-backdrop" onClick={dismissDevModal}>
+          <div className="lx-modal" onClick={e => e.stopPropagation()}>
+            <div className="lx-modal-icon"><FiAlertTriangle size={28} color="#f59e0b" /></div>
+            <h3 className="lx-modal-title">Demo / Dev Mode Active</h3>
+            <p className="lx-modal-body">
+              Email delivery (SMTP) is <strong>not configured</strong> on this server.
+              Your one-time sign-in code is being shown directly on screen instead of
+              emailed to you. This is fine for testing, but should not be used in production.
+            </p>
+            <ul className="lx-modal-list">
+              <li>Your code has already been filled in below</li>
+              <li>Add <code>SMTP_HOST</code>, <code>SMTP_USER</code> &amp; <code>SMTP_PASS</code> in Railway to enable real emails</li>
+              <li>This warning won&apos;t appear again this session</li>
+            </ul>
+            <button className="lx-btn-primary" onClick={dismissDevModal} style={{marginTop:8}}>
+              Got it, continue
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="lx-card">
         {/* logo */}
         <div className="lx-logo">
@@ -190,13 +241,26 @@ export default function Login() {
         ) : (
           <div className="lx-form">
             <div className="lx-heading-group">
-              <h2 className="lx-heading">Check your inbox</h2>
+              <h2 className="lx-heading">{tempCode ? 'Your sign-in code' : 'Check your inbox'}</h2>
               <p className="lx-subtext">
-                6-digit code sent to <strong>{email}</strong>
+                {tempCode
+                  ? <><FiAlertTriangle size={12} style={{color:'#f59e0b',verticalAlign:'middle'}} /> SMTP not configured — code shown below
+                    </>                  
+                  : <>6-digit code sent to <strong>{email}</strong></>}
               </p>
             </div>
 
-
+            {/* Temp-code display banner */}
+            {tempCode && (
+              <div className="lx-tempcode-box">
+                <div className="lx-tempcode-label">Your temporary sign-in code</div>
+                <div className="lx-tempcode-digits">{tempCode}</div>
+                <button className="lx-tempcode-copy" onClick={copyCode} title="Copy code">
+                  {copied ? <FiCheck size={14} /> : <FiCopy size={14} />}
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            )}
             <div className="lx-otp-grid" onPaste={handlePaste}>
               {otp.map((digit, i) => (
                 <input
@@ -576,12 +640,104 @@ export default function Login() {
         .lx-spin { animation: lx-spin 0.8s linear infinite; }
         @keyframes lx-spin { to { transform: rotate(360deg); } }
 
+        /* ═══ DEV-MODE MODAL ═══ */
+        .lx-modal-backdrop {
+          position: fixed; inset: 0; z-index: 100;
+          background: rgba(0,0,0,0.75);
+          backdrop-filter: blur(6px);
+          display: flex; align-items: center; justify-content: center;
+          padding: 20px;
+          animation: lx-fadein 0.2s ease;
+        }
+        @keyframes lx-fadein { from { opacity: 0; } to { opacity: 1; } }
+        .lx-modal {
+          background: #13161e;
+          border: 1px solid rgba(245,158,11,0.3);
+          border-radius: 24px;
+          padding: 32px 28px 28px;
+          width: 100%; max-width: 420px;
+          box-shadow: 0 24px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04) inset;
+          animation: lx-slideup 0.25s cubic-bezier(0.34,1.2,0.64,1);
+          display: flex; flex-direction: column; gap: 14px;
+        }
+        @keyframes lx-slideup {
+          from { transform: translateY(20px) scale(0.97); opacity: 0; }
+          to   { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        .lx-modal-icon {
+          width: 52px; height: 52px;
+          background: rgba(245,158,11,0.1);
+          border: 1px solid rgba(245,158,11,0.25);
+          border-radius: 16px;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .lx-modal-title {
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: 1.2rem; font-weight: 700;
+          color: #f0f2ff; margin: 0; letter-spacing: -0.3px;
+        }
+        .lx-modal-body {
+          font-size: 13px; color: rgba(155,163,192,0.85);
+          line-height: 1.6; margin: 0;
+        }
+        .lx-modal-body strong { color: #f87171; }
+        .lx-modal-list {
+          font-size: 12.5px; color: rgba(155,163,192,0.8);
+          line-height: 1.8; margin: 0; padding-left: 18px;
+        }
+        .lx-modal-list code {
+          background: rgba(124,106,247,0.15);
+          border: 1px solid rgba(124,106,247,0.25);
+          border-radius: 4px; padding: 1px 5px;
+          font-size: 11px; color: #a78bfa;
+        }
+
+        /* ═══ TEMP-CODE BOX ═══ */
+        .lx-tempcode-box {
+          background: rgba(245,158,11,0.07);
+          border: 1.5px solid rgba(245,158,11,0.3);
+          border-radius: 14px;
+          padding: 16px 18px;
+          display: flex; flex-direction: column; gap: 6px;
+          position: relative;
+        }
+        .lx-tempcode-label {
+          font-size: 10px; font-weight: 600;
+          color: rgba(245,158,11,0.7);
+          text-transform: uppercase; letter-spacing: 0.08em;
+        }
+        .lx-tempcode-digits {
+          font-family: 'Space Grotesk', monospace;
+          font-size: 32px; font-weight: 800;
+          letter-spacing: 10px;
+          color: #f0f2ff;
+          line-height: 1;
+        }
+        .lx-tempcode-copy {
+          position: absolute; top: 12px; right: 12px;
+          display: flex; align-items: center; gap: 5px;
+          background: rgba(245,158,11,0.12);
+          border: 1px solid rgba(245,158,11,0.25);
+          border-radius: 8px; padding: 5px 10px;
+          color: rgba(245,158,11,0.9); font-size: 12px;
+          cursor: pointer; font-family: 'Inter', sans-serif;
+          transition: all 0.15s ease;
+        }
+        .lx-tempcode-copy:hover {
+          background: rgba(245,158,11,0.2);
+          color: #f59e0b;
+        }
+
         /* ═══ MOBILE FINE-TUNING ═══ */
         @media (max-width: 380px) {
           .lx-card { padding: 28px 20px 24px; border-radius: 24px; }
           .lx-otp-cell { font-size: 18px; border-radius: 10px; }
+          .lx-tempcode-digits { font-size: 26px; letter-spacing: 7px; }
+          .lx-modal { padding: 24px 20px 20px; }
         }
       `}</style>
     </div>
   );
 }
+
+

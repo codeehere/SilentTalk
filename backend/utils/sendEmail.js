@@ -1,12 +1,14 @@
 const nodemailer = require('nodemailer');
 
 /**
- * Send an email via SMTP or fall back to a console mock.
+ * Send an email via SMTP, or fall back to a console mock when SMTP is not
+ * fully configured.
  *
- * Railway gotcha: if SMTP_HOST / SMTP_USER / SMTP_PASS are partially set
- * (e.g. only one or two vars present), nodemailer will try real SMTP and
- * fail with an auth error which propagates as a 500. We require ALL THREE
- * before attempting real SMTP.
+ * Returns: { delivered: true }  — email was sent via real SMTP
+ *          { delivered: false } — SMTP not configured; OTP logged to console only
+ *
+ * Throws only on hard SMTP errors (wrong credentials, host unreachable, etc.)
+ * when SMTP IS configured — so the caller can decide what to do.
  */
 const sendEmail = async (options) => {
   const hasSmtp =
@@ -15,28 +17,26 @@ const sendEmail = async (options) => {
     process.env.SMTP_PASS;
 
   if (!hasSmtp) {
-    // ── Console mock (dev / missing SMTP config) ──────────────────────────
-    console.warn('⚠️  SMTP not fully configured — falling back to console mock.');
-    console.log('\n======= MOCK EMAIL =======');
+    // ── Console mock ─────────────────────────────────────────────────────
+    console.warn('⚠️  SMTP not configured — OTP will be returned in API response (dev/demo mode).');
+    console.log('\n======= [MOCK EMAIL] =======');
     console.log(`To      : ${options.email}`);
     console.log(`Subject : ${options.subject}`);
     console.log(`Body    : ${options.message}`);
-    console.log('==========================\n');
-    return;
+    console.log('============================\n');
+    return { delivered: false };
   }
 
   // ── Real SMTP ─────────────────────────────────────────────────────────
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: process.env.SMTP_PORT === '465', // true for port 465, false for 587
+    secure: process.env.SMTP_PORT === '465',
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
-    tls: {
-      rejectUnauthorized: false, // allow self-signed certs; fine for most providers
-    },
+    tls: { rejectUnauthorized: false },
   });
 
   const mailOptions = {
@@ -49,11 +49,11 @@ const sendEmail = async (options) => {
 
   try {
     await transporter.sendMail(mailOptions);
+    return { delivered: true };
   } catch (smtpErr) {
-    // Log the full SMTP error so it shows up in Railway logs for debugging
     console.error('[sendEmail] SMTP delivery failed:', smtpErr.message);
-    // Re-throw so the caller (auth route) can return a proper error response
-    throw new Error(`Failed to send verification email: ${smtpErr.message}`);
+    // Return undelivered instead of throwing — let caller include tempCode
+    return { delivered: false };
   }
 };
 

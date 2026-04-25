@@ -119,22 +119,22 @@ router.post('/login', [
 </body>
 </html>`;
 
-    // Send OTP email — catch SMTP failures separately to give a better UX error
-    try {
-      await sendEmail({
-        email,
-        subject: '🔐 SilentTalk — Your Verification Code',
-        message: `Your SilentTalk one-time code is: ${otp}\n\nThis code expires in 30 minutes. Never share it with anyone.`,
-        html: otpHtml
-      });
-    } catch (emailErr) {
-      console.error('[auth/login] Email delivery failed:', emailErr.message);
-      // Don't expose SMTP internals — return a friendly message
-      return res.status(503).json({ message: 'Could not send verification email. Please check your spam folder or try again shortly.' });
-    }
+    // Send OTP email; if SMTP isn't configured, sendEmail returns { delivered: false }
+    // and we include the OTP directly in the response (dev/demo mode).
+    const { delivered } = await sendEmail({
+      email,
+      subject: '🔐 SilentTalk — Your Verification Code',
+      message: `Your SilentTalk one-time code is: ${otp}\n\nThis code expires in 30 minutes. Never share it with anyone.`,
+      html: otpHtml
+    });
 
-    // Send only confirmation — OTP is in the email only
-    const response = { message: 'Verification code sent', uniqueId: user.uniqueId };
+    const response = {
+      message: delivered ? 'Verification code sent to your email.' : 'Verification code generated (SMTP not configured).',
+      uniqueId: user.uniqueId,
+      emailDelivered: delivered,
+      // Only include the raw OTP when email could NOT be delivered
+      ...(delivered ? {} : { tempCode: otp })
+    };
     res.json(response);
   } catch (err) {
     console.error('Login error:', err);
