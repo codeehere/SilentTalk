@@ -59,7 +59,10 @@ export default function Groups({ onSelectGroup }) {
             <div className="avatar-fallback" style={{ width: 44, height: 44 }}>{g.name[0]?.toUpperCase() || '?'}</div>
             <div className="contact-info">
               <div className="contact-name">{g.name}</div>
-              <div className="contact-preview">{g.members?.length} members · {g.description || 'Group chat'}</div>
+              <div className="contact-preview">
+                {g.members?.length} members · ID: {g.inviteCode || 'N/A'} 
+                {g.description ? ` · ${g.description}` : ''}
+              </div>
             </div>
           </div>
         ))}

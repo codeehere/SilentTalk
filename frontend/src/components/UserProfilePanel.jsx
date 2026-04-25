@@ -26,7 +26,10 @@ export default function UserProfilePanel({ contact, onClose, onBlock, onRemove, 
   const isBlocked = blockedUsers?.some(b => b._id === contact?._id || b === contact?._id);
 
   useEffect(() => {
-    if (!contact) return;
+    if (!contact || contact.isGroup) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const fetchProfile = async () => {
       try {
@@ -46,7 +49,7 @@ export default function UserProfilePanel({ contact, onClose, onBlock, onRemove, 
       setLoading(false);
     };
     fetchProfile();
-  }, [contact?._id, API, authFetch]);
+  }, [contact?._id, contact?.isGroup, API, authFetch]);
 
   const saveNickname = async () => {
     setNickSaving(true);
@@ -62,6 +65,41 @@ export default function UserProfilePanel({ contact, onClose, onBlock, onRemove, 
   };
 
   if (!contact) return null;
+
+  if (contact.isGroup) {
+    return (
+      <div className="profile-panel-backdrop" onClick={onClose}>
+        <div className="profile-panel" onClick={e => e.stopPropagation()}>
+          <button className="profile-panel-close" onClick={onClose}>
+            <FiX size={20} />
+          </button>
+
+          <div className="profile-panel-avatar-wrap">
+            <div className="profile-panel-avatar-fallback">{contact.name?.[0]?.toUpperCase() || '?'}</div>
+          </div>
+
+          <div className="profile-panel-name">{contact.name}</div>
+          <div className="profile-panel-uid" style={{ marginTop: 8 }}>
+            Group ID (Invite Code): <strong style={{ color: 'var(--text)' }}>{contact.inviteCode || 'N/A'}</strong>
+          </div>
+
+          <div className="profile-panel-online-label">
+            {contact.members?.length || 0} members
+          </div>
+
+          {contact.description && (
+            <div className="profile-panel-bio">"{contact.description}"</div>
+          )}
+
+          <div className="profile-panel-divider" />
+          
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: '20px 0' }}>
+            Group chat info
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const displayName = nickname || contact.username || contact.email?.split('@')[0] || 'User';
   const initials = displayName[0].toUpperCase();
