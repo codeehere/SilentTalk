@@ -345,6 +345,7 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
           if (exists) return prev;
           return [...prev, {
             ...data,
+            senderId: data.senderObj || data.senderId,
             status: 'read', // Marked read locally because chat is open
             _id: data.messageId || data.tempId,
             createdAt: new Date().toISOString()
@@ -549,7 +550,8 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
       text: typeof text === 'object' ? JSON.stringify(text) : (text || ''),
       ciphertext, nonce,
       [isGroup ? 'groupId' : 'receiverId']: contact._id,
-      tempId, mediaUrl: mediaUrl || '', mediaType: mediaType || '', replyTo: replyTo?._id
+      tempId, mediaUrl: mediaUrl || '', mediaType: mediaType || '', replyTo: replyTo?._id,
+      senderObj: { _id: user._id, username: user.username, avatar: user.avatar, uniqueId: user.uniqueId }
     };
 
     emit('message:send', payloadObj);
@@ -832,8 +834,8 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
           style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}
           onClick={() => { setShowProfilePanel(true); setShowMoreMenu(false); }}
         >
-          {contact.avatar
-            ? <img src={contact.avatar} alt="" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover' }} />
+          {(contact.avatar || contact.avatarUrl)
+            ? <img src={contact.avatar || contact.avatarUrl} alt="" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover' }} />
             : <AvatarFallback name={contact.name || contact.username} size={38} />
           }
           <div className="chat-header-info">
