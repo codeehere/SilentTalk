@@ -5,6 +5,17 @@ const API = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:
 
 const AuthContext = createContext(null);
 
+// Safe JSON parser — never throws on empty body or non-JSON (502/504/gateway errors)
+async function safeJson(res) {
+  try {
+    const text = await res.text();
+    if (!text || text.trim() === '') return null;
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -27,8 +38,8 @@ export function AuthProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Failed to send OTP');
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data?.message || `Server error (${res.status}) — is the backend running?`);
     return data;
   };
 
@@ -38,8 +49,8 @@ export function AuthProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, otp })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Verification failed');
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data?.message || `Server error (${res.status}) — is the backend running?`);
 
     localStorage.setItem('st_token', data.token);
     localStorage.setItem('st_refresh', data.refreshToken || '');
