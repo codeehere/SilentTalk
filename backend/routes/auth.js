@@ -119,12 +119,19 @@ router.post('/login', [
 </body>
 </html>`;
 
-    await sendEmail({
-      email,
-      subject: '🔐 SilentTalk — Your Verification Code',
-      message: `Your SilentTalk one-time code is: ${otp}\n\nThis code expires in 30 minutes. Never share it with anyone.`,
-      html: otpHtml
-    });
+    // Send OTP email — catch SMTP failures separately to give a better UX error
+    try {
+      await sendEmail({
+        email,
+        subject: '🔐 SilentTalk — Your Verification Code',
+        message: `Your SilentTalk one-time code is: ${otp}\n\nThis code expires in 30 minutes. Never share it with anyone.`,
+        html: otpHtml
+      });
+    } catch (emailErr) {
+      console.error('[auth/login] Email delivery failed:', emailErr.message);
+      // Don't expose SMTP internals — return a friendly message
+      return res.status(503).json({ message: 'Could not send verification email. Please check your spam folder or try again shortly.' });
+    }
 
     // Send only confirmation — OTP is in the email only
     const response = { message: 'Verification code sent', uniqueId: user.uniqueId };

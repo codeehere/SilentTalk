@@ -302,12 +302,26 @@ io.on('connection', async (socket) => {
 const PORT = process.env.PORT || 5000;
 
 (async () => {
+  // ── Startup env-var audit (visible in Railway logs) ──────────────────
+  const required = { MONGO_URI: !!process.env.MONGO_URI, JWT_SECRET: !!process.env.JWT_SECRET };
+  const smtp     = { SMTP_HOST: !!process.env.SMTP_HOST, SMTP_USER: !!process.env.SMTP_USER, SMTP_PASS: !!process.env.SMTP_PASS };
+  const optional = { JWT_REFRESH_SECRET: !!process.env.JWT_REFRESH_SECRET, CLOUDINARY_CLOUD_NAME: !!process.env.CLOUDINARY_CLOUD_NAME };
+
+  console.log('\n── Env-var audit ──────────────────────────────────');
+  Object.entries(required).forEach(([k, v]) => console.log(`   ${v ? '✅' : '❌ MISSING'} ${k}`));
+  const smtpReady = Object.values(smtp).every(Boolean);
+  Object.entries(smtp).forEach(([k, v]) => console.log(`   ${v ? '✅' : '⚠️  missing'} ${k}`));
+  if (!smtpReady) console.warn('   ⚠️  SMTP incomplete — OTP emails will be console-logged only.');
+  Object.entries(optional).forEach(([k, v]) => console.log(`   ${v ? '✅' : 'ℹ️  not set'} ${k}`));
+  console.log('───────────────────────────────────────────────────\n');
+
   // connectDB retries with exponential backoff and exits on final failure
   await connectDB();
 
   server.listen(PORT, () => {
     console.log(`\n🔒 SilentTalk backend running on port ${PORT}`);
     console.log(`   Environment : ${process.env.NODE_ENV || 'development'}`);
-    console.log(`   MongoDB     : ready\n`);
+    console.log(`   MongoDB     : ready`);
+    console.log(`   SMTP        : ${smtpReady ? 'configured' : 'console-mock (set SMTP_HOST/USER/PASS to enable)'}\n`);
   });
 })();
