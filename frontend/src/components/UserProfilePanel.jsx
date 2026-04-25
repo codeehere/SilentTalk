@@ -23,27 +23,37 @@ export default function UserProfilePanel({ contact, onClose, onBlock, onRemove, 
   const [nickDraft, setNickDraft] = useState('');
   const [nickSaving, setNickSaving] = useState(false);
 
+  // Group Admin States
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [memberSearchResults, setMemberSearchResults] = useState([]);
+  const [searchingMembers, setSearchingMembers] = useState(false);
+
   const isBlocked = blockedUsers?.some(b => b._id === contact?._id || b === contact?._id);
 
   useEffect(() => {
-    if (!contact || contact.isGroup) {
-      setLoading(false);
-      return;
-    }
+    if (!contact) return;
     setLoading(true);
     const fetchProfile = async () => {
       try {
-        const res = await authFetch(`${API}/api/users/profile/${contact._id}`);
-        if (res.ok) {
-          const data = await res.json();
-          setProfile(data);
-        }
-        // Load this user's nickname for this contact
-        const nRes = await authFetch(`${API}/api/users/nicknames`);
-        if (nRes.ok) {
-          const { nicknames } = await nRes.json();
-          setNickname(nicknames[contact._id] || '');
-          setNickDraft(nicknames[contact._id] || '');
+        if (contact.isGroup) {
+          const res = await authFetch(`${API}/api/groups/${contact._id}`);
+          if (res.ok) {
+            const data = await res.json();
+            setProfile(data);
+          }
+        } else {
+          const res = await authFetch(`${API}/api/users/profile/${contact._id}`);
+          if (res.ok) {
+            const data = await res.json();
+            setProfile(data);
+          }
+          // Load this user's nickname for this contact
+          const nRes = await authFetch(`${API}/api/users/nicknames`);
+          if (nRes.ok) {
+            const { nicknames } = await nRes.json();
+            setNickname(nicknames[contact._id] || '');
+            setNickDraft(nicknames[contact._id] || '');
+          }
         }
       } catch {}
       setLoading(false);
@@ -67,6 +77,73 @@ export default function UserProfilePanel({ contact, onClose, onBlock, onRemove, 
   if (!contact) return null;
 
   if (contact.isGroup) {
+    const group = profile || contact;
+    const { user } = useAuth();
+    const myMember = group.members?.find(m => m.userId?._id === user?._id || m.userId === user?._id);
+    const isAdmin = myMember?.role === 'admin' || myMember?.role === 'owner';
+
+    const removeMember = async (userId) => {
+      if (!window.confirm("Remove this member?")) return;
+      try {
+        await authFetch(`${API}/api/groups/${group._id}/members/${userId}`, { method: 'DELETE' });
+        if (profile) setProfile(prev => ({...prev, members: prev.members.filter(m => m.userId._id !== userId)}));
+      } catch (err) { alert(err.message); }
+    };
+
+    const makeAdmin = async (userId) => {
+      if (!window.confirm("Make this member an admin?")) return;
+      try {
+        await authFetch(`${API}/api/groups/${group._id}/members/${userId}/role`, { 
+          method: 'PATCH', 
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ role: 'admin' }) 
+        });
+        if (profile) setProfile(prev => ({
+          ...prev, 
+          members: prev.members.map(m => m.userId._id === userId ? {...m, role: 'admin'} : m)
+        }));
+      } catch (err) { alert(err.message); }
+    };
+
+    const handleMemberSearch = async (e) => {
+      const q = e.target.value;
+      setMemberSearchQuery(q);
+      if (q.length < 2) {
+        setMemberSearchResults([]);
+        return;
+      }
+      setSearchingMembers(true);
+      try {
+        const res = await authFetch(`${API}/api/users/search?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json();
+          // Filter out users already in the group
+          const existingIds = new Set(group.members?.map(m => m.userId?._id || m.userId));
+          setMemberSearchResults(data.filter(u => !existingIds.has(u._id)));
+        }
+      } catch {}
+      setSearchingMembers(false);
+    };
+
+    const addMember = async (userId) => {
+      try {
+        const res = await authFetch(`${API}/api/groups/${group._id}/members`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ userId })
+        });
+        if (res.ok) {
+          const updatedGroup = await res.json();
+          setProfile(updatedGroup);
+          setMemberSearchQuery('');
+          setMemberSearchResults([]);
+        } else {
+          const err = await res.json();
+          alert(err.message || 'Failed to add member');
+        }
+      } catch (err) { alert(err.message); }
+    };
+
     return (
       <div className="profile-panel-backdrop" onClick={onClose}>
         <div className="profile-panel" onClick={e => e.stopPropagation()}>
@@ -84,17 +161,78 @@ export default function UserProfilePanel({ contact, onClose, onBlock, onRemove, 
           </div>
 
           <div className="profile-panel-online-label">
-            {contact.members?.length || 0} members
+            {group.members?.length || 0} members
           </div>
 
-          {contact.description && (
-            <div className="profile-panel-bio">"{contact.description}"</div>
+          {group.description && (
+            <div className="profile-panel-bio">"{group.description}"</div>
           )}
 
           <div className="profile-panel-divider" />
           
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: '20px 0' }}>
-            Group chat info
+          <div style={{ marginTop: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+              <span>MEMBERS</span>
+            </div>
+
+            {isAdmin && (
+              <div style={{ marginBottom: 15 }}>
+                <input 
+                  type="text" 
+                  placeholder="Search username to add..." 
+                  className="input-field"
+                  value={memberSearchQuery}
+                  onChange={handleMemberSearch}
+                  style={{ marginBottom: 5 }}
+                />
+                {searchingMembers && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Searching...</div>}
+                {memberSearchResults.length > 0 && (
+                  <div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '4px 0', border: '1px solid var(--border)', maxHeight: 150, overflowY: 'auto' }}>
+                    {memberSearchResults.map(u => (
+                      <div key={u._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>@{u.uniqueId}</div>
+                        <button className="btn btn-sm btn-primary" onClick={() => addMember(u._id)}>Add</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {group.members?.map(m => {
+              const mUser = m.userId;
+              if (!mUser || !mUser._id) return null;
+              const isMe = mUser._id === user?._id;
+              return (
+                <div key={mUser._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {mUser.avatar ? (
+                      <img src={mUser.avatar} style={{ width: 32, height: 32, borderRadius: '50%' }} alt=""/>
+                    ) : (
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {(mUser.username||'?')[0].toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{isMe ? 'You' : mUser.username}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{m.role}</div>
+                    </div>
+                  </div>
+                  {isAdmin && !isMe && (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {myMember.role === 'owner' && m.role !== 'admin' && m.role !== 'owner' && (
+                        <button className="btn btn-sm" onClick={() => makeAdmin(mUser._id)}>Make Admin</button>
+                      )}
+                      {(myMember.role === 'owner' || m.role === 'member') && (
+                        <button className="icon-btn btn-sm btn-danger" onClick={() => removeMember(mUser._id)}>
+                          <FiUserMinus size={14}/>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

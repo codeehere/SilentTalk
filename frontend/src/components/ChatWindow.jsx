@@ -984,6 +984,11 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
                     setEmojiTarget(msg._id); 
                   }}
                 >
+                  {isGroup && !mine && msg.senderId && !msg.deletedForEveryone && (
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', marginBottom: 2 }}>
+                      {msg.senderId.username || 'User'}
+                    </div>
+                  )}
                   {msg.deletedForEveryone
                     ? <span style={{ fontStyle: 'italic', opacity: 0.6 }}>This message was deleted</span>
                     : (
