@@ -16,32 +16,24 @@ const userSchema = new mongoose.Schema({
     unique: true,
     trim: true
   },
-  username: {
-    type: String,
-    default: '',
-    trim: true,
-    maxlength: 50
-  },
-  bio: {
-    type: String,
-    default: '',
-    maxlength: 200
-  },
-  avatar: {
-    type: String,
-    default: ''
-  },
+  username: { type: String, default: '', trim: true, maxlength: 50 },
+  bio: { type: String, default: '', maxlength: 200 },
+  avatar: { type: String, default: '' },
   // NaCl Curve25519 public key (hex string) for E2EE
-  publicKey: {
-    type: String,
-    default: ''
-  },
-  otp: { type: String, select: false },
-  otpExpires: { type: Date, select: false },
-  otpAttempts: { type: Number, default: 0, select: false },
-  otpLockedUntil: { type: Date, select: false },
+  publicKey: { type: String, default: '' },
+
+  // ── Password auth (active) ─────────────────────────────────────────────
+  password: { type: String, select: false },
+
+  // ── OTP auth (commented out — will be re-enabled once SMTP is configured)
+  // otp:           { type: String, select: false },
+  // otpExpires:    { type: Date,   select: false },
+  // otpAttempts:   { type: Number, default: 0, select: false },
+  // otpLockedUntil:{ type: Date,   select: false },
+
   // Hashed refresh token for rotation
   refreshToken: { type: String, select: false },
+
   isOnline: { type: Boolean, default: false },
   lastSeen: { type: Date, default: Date.now },
   contacts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
@@ -53,23 +45,10 @@ const userSchema = new mongoose.Schema({
     readReceipts: { type: Boolean, default: true },
     lastSeenVisible: { type: Boolean, default: true }
   },
-  // chatWallpapers: keyed by contact._id string or "global"
-  chatWallpapers: {
-    type: Map,
-    of: String,
-    default: {}
-  },
-  // contactNicknames: private aliases the user sets for their contacts
-  contactNicknames: {
-    type: Map,
-    of: String,
-    default: {}
-  },
-  // pinnedChats: array of contact/group _id strings
+  chatWallpapers: { type: Map, of: String, default: {} },
+  contactNicknames: { type: Map, of: String, default: {} },
   pinnedChats: [{ type: String, default: [] }],
-  // lockedChats: array of contact _id strings
   lockedChats: [{ type: String, default: [] }],
-  // archivedChats: array of contact _id strings
   archivedChats: [{ type: String, default: [] }],
   isBusiness: { type: Boolean, default: false },
   businessProfile: {
@@ -88,10 +67,10 @@ const userSchema = new mongoose.Schema({
   privacyPin: { type: String, select: false }
 }, { timestamps: true });
 
-// Hash OTP and Privacy PIN before saving
-userSchema.pre('save', async function() {
-  if (this.isModified('otp') && this.otp) {
-    this.otp = await bcrypt.hash(this.otp, 10);
+// ── Hooks ─────────────────────────────────────────────────────────────────────
+userSchema.pre('save', async function () {
+  if (this.isModified('password') && this.password) {
+    this.password = await bcrypt.hash(this.password, 12);
   }
   if (this.isModified('refreshToken') && this.refreshToken) {
     this.refreshToken = await bcrypt.hash(this.refreshToken, 10);
@@ -101,19 +80,20 @@ userSchema.pre('save', async function() {
   }
 });
 
-userSchema.methods.compareOtp = async function(candidateOtp) {
-  return bcrypt.compare(candidateOtp, this.otp);
+// ── Methods ───────────────────────────────────────────────────────────────────
+userSchema.methods.comparePassword = async function (candidate) {
+  return bcrypt.compare(candidate, this.password);
 };
 
-userSchema.methods.compareRefreshToken = async function(token) {
+userSchema.methods.compareRefreshToken = async function (token) {
   return bcrypt.compare(token, this.refreshToken);
 };
 
-userSchema.methods.comparePin = async function(candidatePin) {
+userSchema.methods.comparePin = async function (candidatePin) {
   return bcrypt.compare(candidatePin, this.privacyPin);
 };
 
-// Indexes
+// ── Indexes ───────────────────────────────────────────────────────────────────
 userSchema.index({ uniqueId: 1 });
 userSchema.index({ email: 1 });
 
