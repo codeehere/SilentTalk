@@ -117,7 +117,7 @@ router.get('/group/:groupId', protect, async (req, res) => {
     }
 
     // Security: verify requester is actually a member of the group
-    const group = await Group.findOne({ _id: groupId, members: req.user._id }).lean();
+    const group = await Group.findOne({ _id: groupId, 'members.userId': req.user._id }).lean();
     if (!group) {
       return res.status(403).json({ message: 'You are not a member of this group' });
     }

@@ -487,7 +487,7 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
   const stopTyping = () => {
     if (typingState.current) {
       typingState.current = false;
-      emit('typing:stop', { to: contact._id });
+      emit('typing:stop', { [isGroup ? 'groupId' : 'to']: contact._id });
     }
   };
 
@@ -495,7 +495,7 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
     setInput(val);
     if (!typingState.current) {
       typingState.current = true;
-      emit('typing:start', { to: contact._id });
+      emit('typing:start', { [isGroup ? 'groupId' : 'to']: contact._id });
     }
     clearTimeout(typingTimer.current);
     typingTimer.current = setTimeout(stopTyping, 1500);
@@ -564,7 +564,7 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
         const saved = await res.json();
         setMessages(prev => prev.map(m => m.tempId === tempId ? { ...m, _id: saved._id, status: saved.status } : m));
         emit('message:confirm', {
-          receiverId: contact._id,
+          [isGroup ? 'groupId' : 'receiverId']: contact._id,
           messageId: saved._id,
           tempId
         });
