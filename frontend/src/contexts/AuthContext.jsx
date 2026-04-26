@@ -70,14 +70,21 @@ export function AuthProvider({ children }) {
     localStorage.setItem('st_user',    JSON.stringify(data));
     setUser(data);
 
-    // Register E2EE public key
+    // Register E2EE public key — fire-and-forget, user is already logged in
     if (!data.publicKey) {
-      const publicKey = exportPublicKey();
-      await fetch(`${API}/api/auth/me`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.token}` },
-        body: JSON.stringify({ publicKey })
-      });
+      try {
+        const publicKey = exportPublicKey();
+        if (publicKey) {
+          await fetch(`${API}/api/auth/me`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.token}` },
+            body: JSON.stringify({ publicKey })
+          });
+        }
+      } catch (keyErr) {
+        // Non-fatal — E2EE key can be registered later
+        console.warn('[register] Could not register public key:', keyErr.message);
+      }
     }
     return data;
   };

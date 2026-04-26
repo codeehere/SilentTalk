@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FiSearch, FiUserPlus, FiX } from 'react-icons/fi';
+import { FiSearch, FiUserPlus, FiX, FiUser, FiMapPin, FiLock, FiArchive, FiTrash2 } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 
@@ -47,6 +47,10 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
 
   // Context Menu state
   const [contextMenu, setContextMenu] = useState({ show: false, x: 0, y: 0, contact: null });
+  const [showDeleteModal, setShowDeleteModal] = useState(null);
+  const [showLockModal, setShowLockModal] = useState(null);
+  const [lockPin, setLockPin] = useState('');
+  const [lockError, setLockError] = useState('');
 
   useEffect(() => {
     const handleClick = () => setContextMenu({ show: false, x: 0, y: 0, contact: null });
@@ -56,6 +60,9 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
 
   useEffect(() => {
     fetchContacts();
+    const handleMetadata = () => fetchContacts();
+    window.addEventListener('chat-metadata-updated', handleMetadata);
+    return () => window.removeEventListener('chat-metadata-updated', handleMetadata);
   }, []);
 
   useEffect(() => {
@@ -211,9 +218,10 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
     if (showSearch && searchQ.length >= 2) return searchResults;
     if (activeTab === 'requests') return pendingContacts;
     if (activeTab === 'blocked') return blockedUsers;
+    if (activeTab === 'archived') return contacts.filter(c => archivedChats.includes(c._id));
     
-    // Filter out archived/locked chats from main list
-    const mainList = contacts.filter(c => !archivedChats.includes(c._id) && !lockedChats.includes(c._id));
+    // Filter out ONLY archived chats from main list, locked chats stay but require PIN
+    const mainList = contacts.filter(c => !archivedChats.includes(c._id));
     
     // Sort: Pinned first, then by last message/online if needed
     return [...mainList].sort((a, b) => {
@@ -238,11 +246,12 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
     } catch {}
   };
 
-  const deleteChat = async (id) => {
-    if (!window.confirm("Delete this contact and chat?")) return;
-    await authFetch(`${API}/api/users/contacts/${id}`, { method: 'DELETE' });
-    setContacts(prev => prev.filter(c => c._id !== id));
-    if (activeContactId === id) onSelectContact(null);
+  const deleteChat = async (id, bothSides) => {
+    try {
+      await authFetch(`${API}/api/users/contacts/${id}?bothSides=${bothSides}`, { method: 'DELETE' });
+      setContacts(prev => prev.filter(c => c._id !== id));
+      if (activeContactId === id) onSelectContact(null);
+    } catch (err) { alert(err.message); }
   };
 
   const unblockContact = async (e, u) => {
@@ -296,6 +305,30 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
       </div>
 
       <div className="panel-scroll">
+        {activeTab === 'chats' && !showSearch && (
+          <div style={{ paddingBottom: 8 }}>
+            {archivedChats.length > 0 && (
+              <div className="contact-item" onClick={() => setActiveTab('archived')} style={{ cursor: 'pointer', padding: '12px 16px' }}>
+                <div className="contact-avatar" style={{ background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                  <FiArchive size={20} />
+                </div>
+                <div className="contact-info">
+                  <div className="contact-name" style={{ fontWeight: 600 }}>Archived Chats</div>
+                  <div className="contact-preview">{archivedChats.length} chat{archivedChats.length !== 1 ? 's' : ''}</div>
+                </div>
+              </div>
+            )}
+            {archivedChats.length > 0 && <div style={{ height: 1, background: 'var(--border)', margin: '4px 16px' }} />}
+          </div>
+        )}
+
+        {activeTab === 'archived' && (
+           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+             <button className="icon-btn" onClick={() => setActiveTab('chats')}><FiX size={18} /></button>
+             <h3 style={{ margin: 0, fontSize: 16 }}>Archived Chats</h3>
+           </div>
+        )}
+
         {displayList.length === 0 && (
           <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
             {showSearch
@@ -315,12 +348,18 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
               onClick={() => {
                 if (activeTab === 'blocked') return;
                 if (isResult && !alreadyAdded) addContact(contact);
-                else if (activeTab !== 'requests' || isResult) onSelectContact(contact);
+                else if (activeTab !== 'requests' || isResult) {
+                  if (lockedChats.includes(contact._id)) {
+                    setShowLockModal({ action: 'open', contact });
+                  } else {
+                    onSelectContact(contact);
+                  }
+                }
               }}
               onContextMenu={(e) => {
                 if (activeTab !== 'chats' || isResult) return;
                 e.preventDefault();
-                setContextMenu({ show: true, x: e.pageX, y: e.pageY, contact });
+                setContextMenu({ show: true, x: e.clientX, y: e.clientY, contact });
               }}
               style={{ cursor: (activeTab === 'requests' && !isResult) || activeTab === 'blocked' ? 'default' : 'pointer' }}
             >
@@ -377,22 +416,92 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={e => e.stopPropagation()}
         >
-          <button className="context-menu-item" onClick={() => { onSelectContact(contextMenu.contact); /* Profile panel handles nickname */ }}>
-            👤 View Profile / Nickname
+          <button className="context-menu-item" onClick={() => { onSelectContact(contextMenu.contact); /* Profile panel handles nickname */ setContextMenu({ ...contextMenu, show: false }); }}>
+            <FiUser size={15} /> View Profile
           </button>
           <button className="context-menu-item" onClick={() => handleAction('pin', contextMenu.contact._id)}>
-            {pinnedChats.includes(contextMenu.contact._id) ? '📌 Unpin Chat' : '📌 Pin Chat'}
+            <FiMapPin size={15} /> {pinnedChats.includes(contextMenu.contact._id) ? 'Unpin Chat' : 'Pin Chat'}
           </button>
-          <button className="context-menu-item" onClick={() => handleAction('lock', contextMenu.contact._id)}>
-            {lockedChats.includes(contextMenu.contact._id) ? '🔓 Unlock Chat' : '🔒 Lock Chat'}
+          <button className="context-menu-item" onClick={() => {
+            setContextMenu({ ...contextMenu, show: false });
+            setShowLockModal({ action: 'toggle', contact: contextMenu.contact });
+          }}>
+            <FiLock size={15} /> {lockedChats.includes(contextMenu.contact._id) ? 'Unlock Chat' : 'Lock Chat'}
           </button>
           <button className="context-menu-item" onClick={() => handleAction('archive', contextMenu.contact._id)}>
-            {archivedChats.includes(contextMenu.contact._id) ? '📥 Unarchive' : '📥 Archive Chat'}
+            <FiArchive size={15} /> {archivedChats.includes(contextMenu.contact._id) ? 'Unarchive' : 'Archive Chat'}
           </button>
           <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-          <button className="context-menu-item danger" onClick={() => deleteChat(contextMenu.contact._id)}>
-            🗑️ Delete Chat
+          <button className="context-menu-item danger" onClick={() => { setContextMenu({ ...contextMenu, show: false }); setShowDeleteModal(contextMenu.contact); }}>
+            <FiTrash2 size={15} /> Delete Chat
           </button>
+        </div>
+      )}
+
+      {/* Modals */}
+      {showDeleteModal && (
+        <div className="modal-backdrop" onClick={() => setShowDeleteModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <h3 className="modal-title">Delete Chat</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 20, fontSize: 14 }}>
+              Are you sure you want to delete your chat with <strong>{showDeleteModal.username || showDeleteModal.email}</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setShowDeleteModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { deleteChat(showDeleteModal._id, false); setShowDeleteModal(null); }}>Delete for me</button>
+              <button className="btn btn-danger" onClick={() => { deleteChat(showDeleteModal._id, true); setShowDeleteModal(null); }}>Delete for both</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLockModal && (
+        <div className="modal-backdrop" onClick={() => { setShowLockModal(null); setLockPin(''); setLockError(''); }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360 }}>
+            <h3 className="modal-title">Enter Privacy PIN</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 13 }}>
+              Please enter your 4-digit Privacy PIN to {showLockModal.action === 'open' ? 'open this chat' : 'toggle lock status'}. 
+              <br /><br />
+              <span style={{ fontSize: 11, opacity: 0.8 }}>If this is your first time, the PIN you enter will become your permanent Privacy PIN.</span>
+            </p>
+            <input 
+              type="password" 
+              className="input" 
+              placeholder="••••" 
+              maxLength={4}
+              value={lockPin} 
+              onChange={e => { setLockPin(e.target.value); setLockError(''); }}
+              style={{ textAlign: 'center', fontSize: 24, letterSpacing: 8, marginBottom: 10 }}
+              autoFocus
+            />
+            {lockError && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10, textAlign: 'center' }}>{lockError}</div>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
+              <button className="btn btn-ghost" onClick={() => { setShowLockModal(null); setLockPin(''); setLockError(''); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={async () => {
+                if (lockPin.length !== 4) return setLockError('PIN must be 4 digits');
+                try {
+                  const res = await authFetch(`${API}/api/users/verify-pin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin: lockPin })
+                  });
+                  if (res.ok) {
+                    if (showLockModal.action === 'open') {
+                      onSelectContact(showLockModal.contact);
+                    } else if (showLockModal.action === 'toggle') {
+                      await handleAction('lock', showLockModal.contact._id);
+                    }
+                    setShowLockModal(null);
+                    setLockPin('');
+                    setLockError('');
+                  } else {
+                    const data = await res.json();
+                    setLockError(data.message || 'Incorrect PIN');
+                  }
+                } catch { setLockError('Network error'); }
+              }}>Confirm</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

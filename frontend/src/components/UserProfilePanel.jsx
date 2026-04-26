@@ -27,6 +27,12 @@ export default function UserProfilePanel({ contact, onClose, onBlock, onRemove, 
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [memberSearchResults, setMemberSearchResults] = useState([]);
   const [searchingMembers, setSearchingMembers] = useState(false);
+  
+  // Group Info Editing States
+  const [editingGroup, setEditingGroup] = useState(false);
+  const [groupDraft, setGroupDraft] = useState({ name: '', description: '' });
+  const [groupSaving, setGroupSaving] = useState(false);
+  const [groupAvatarUploading, setGroupAvatarUploading] = useState(false);
 
   const isBlocked = blockedUsers?.some(b => b._id === contact?._id || b === contact?._id);
 
@@ -144,6 +150,43 @@ export default function UserProfilePanel({ contact, onClose, onBlock, onRemove, 
       } catch (err) { alert(err.message); }
     };
 
+    const handleGroupAvatarUpload = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setGroupAvatarUploading(true);
+      const formData = new FormData();
+      formData.append('avatar', file);
+      try {
+        const res = await authFetch(`${API}/api/groups/${group._id}/avatar`, {
+          method: 'POST',
+          body: formData
+        });
+        if (res.ok) {
+          const { avatarUrl } = await res.json();
+          if (profile) setProfile(prev => ({ ...prev, avatarUrl }));
+        }
+      } catch (err) { alert('Failed to upload group picture: ' + err.message); }
+      setGroupAvatarUploading(false);
+    };
+
+    const saveGroupInfo = async () => {
+      if (!groupDraft.name.trim()) return;
+      setGroupSaving(true);
+      try {
+        const res = await authFetch(`${API}/api/groups/${group._id}`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ name: groupDraft.name.trim(), description: groupDraft.description.trim() })
+        });
+        if (res.ok) {
+          const updatedGroup = await res.json();
+          setProfile(updatedGroup);
+          setEditingGroup(false);
+        }
+      } catch (err) { alert(err.message); }
+      setGroupSaving(false);
+    };
+
     return (
       <div className="profile-panel-backdrop" onClick={onClose}>
         <div className="profile-panel" onClick={e => e.stopPropagation()}>
@@ -151,21 +194,52 @@ export default function UserProfilePanel({ contact, onClose, onBlock, onRemove, 
             <FiX size={20} />
           </button>
 
-          <div className="profile-panel-avatar-wrap">
-            <div className="profile-panel-avatar-fallback">{contact.name?.[0]?.toUpperCase() || '?'}</div>
+          <div className="profile-panel-avatar-wrap" style={{ position: 'relative' }}>
+            {group.avatarUrl ? (
+              <img src={group.avatarUrl} alt="Group Avatar" style={{ width: 100, height: 100, borderRadius: '50%', objectFit: 'cover' }} />
+            ) : (
+              <div className="profile-panel-avatar-fallback">{contact.name?.[0]?.toUpperCase() || '?'}</div>
+            )}
+            {isAdmin && (
+              <label style={{ position: 'absolute', bottom: 0, right: 0, background: 'var(--accent)', color: '#fff', borderRadius: '50%', padding: 6, cursor: 'pointer', boxShadow: '0 2px 5px rgba(0,0,0,0.3)' }} title="Change Group Picture">
+                <FiEdit2 size={12} />
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleGroupAvatarUpload} disabled={groupAvatarUploading} />
+              </label>
+            )}
+            {groupAvatarUploading && (
+              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className="spinner" style={{ width: 20, height: 20, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+              </div>
+            )}
           </div>
 
-          <div className="profile-panel-name">{contact.name}</div>
-          <div className="profile-panel-uid" style={{ marginTop: 8 }}>
-            Group ID (Invite Code): <strong style={{ color: 'var(--text)' }}>{contact.inviteCode || 'N/A'}</strong>
-          </div>
+          {editingGroup ? (
+            <div style={{ padding: '0 20px', width: '100%', boxSizing: 'border-box' }}>
+              <input className="input-field" value={groupDraft.name} onChange={e => setGroupDraft({...groupDraft, name: e.target.value})} placeholder="Group Name" style={{ marginBottom: 10 }} />
+              <textarea className="input-field" value={groupDraft.description} onChange={e => setGroupDraft({...groupDraft, description: e.target.value})} placeholder="Group Description (optional)" rows={3} style={{ marginBottom: 10, resize: 'none' }} />
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="btn btn-sm" style={{ flex: 1 }} onClick={() => setEditingGroup(false)}>Cancel</button>
+                <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={saveGroupInfo} disabled={groupSaving || !groupDraft.name.trim()}>Save</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="profile-panel-name">
+                {group.name}
+                {isAdmin && <button className="icon-btn" style={{ marginLeft: 8 }} onClick={() => { setGroupDraft({ name: group.name, description: group.description || '' }); setEditingGroup(true); }}><FiEdit2 size={14}/></button>}
+              </div>
+              <div className="profile-panel-uid" style={{ marginTop: 8 }}>
+                Group ID (Invite Code): <strong style={{ color: 'var(--text)' }}>{group.inviteCode || 'N/A'}</strong>
+              </div>
 
-          <div className="profile-panel-online-label">
-            {group.members?.length || 0} members
-          </div>
+              <div className="profile-panel-online-label">
+                {group.members?.length || 0} members
+              </div>
 
-          {group.description && (
-            <div className="profile-panel-bio">"{group.description}"</div>
+              {group.description && (
+                <div className="profile-panel-bio">"{group.description}"</div>
+              )}
+            </>
           )}
 
           <div className="profile-panel-divider" />

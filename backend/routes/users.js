@@ -129,9 +129,15 @@ router.post('/contacts/:id', protect, async (req, res) => {
 // DELETE /api/users/contacts/:id
 router.delete('/contacts/:id', protect, async (req, res) => {
   try {
+    const { bothSides } = req.query;
     await User.findByIdAndUpdate(req.user._id, {
       $pull: { contacts: req.params.id, pendingContacts: req.params.id }
     });
+    if (bothSides === 'true') {
+      await User.findByIdAndUpdate(req.params.id, {
+        $pull: { contacts: req.user._id, pendingContacts: req.user._id }
+      });
+    }
     res.json({ message: 'Contact removed' });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -338,7 +344,13 @@ router.post('/verify-pin', protect, async (req, res) => {
     
     // Explicitly select privacyPin for comparison
     const user = await User.findById(req.user._id).select('+privacyPin');
-    if (!user.privacyPin) return res.status(400).json({ message: 'No PIN set' });
+    
+    if (!user.privacyPin) {
+      // Auto-set the PIN if this is their first time locking something!
+      user.privacyPin = pin;
+      await user.save();
+      return res.json({ message: 'Success' });
+    }
 
     const isMatch = await user.comparePin(pin);
     if (!isMatch) return res.status(401).json({ message: 'Incorrect PIN' });

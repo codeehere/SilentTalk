@@ -34,6 +34,7 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
   const [callDuration, setCallDuration] = useState(0);
   const timerRef = useRef(null);
   const callRecordIdRef = useRef(null);
+  const iceQueueRef = useRef([]);
   // Stable refs for callbacks used inside socket handlers
   const onEndRef = useRef(onEnd);
   const authFetchRef = useRef(authFetch);
@@ -139,6 +140,13 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
     stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
     await pc.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+
+    // Process any ICE candidates received before we accepted
+    for (const c of iceQueueRef.current) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch {}
+    }
+    iceQueueRef.current = [];
+
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     emit('call:answer', { to: contact._id, answer });
@@ -162,18 +170,23 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
       if (pcRef.current && pcRef.current.signalingState !== 'closed') {
         try {
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-          setStatus('connected');
-          if (!timerRef.current) {
-            timerRef.current = setInterval(() => setCallDuration(d => d + 1), 1000);
+          // Process queued candidates
+          for (const c of iceQueueRef.current) {
+            try { await pcRef.current.addIceCandidate(new RTCIceCandidate(c)); } catch {}
           }
+          iceQueueRef.current = [];
         } catch {}
       }
     };
 
     const handleIce = async ({ candidate }) => {
       try {
-        if (pcRef.current && candidate && pcRef.current.remoteDescription) {
-          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+        if (candidate) {
+          if (pcRef.current && pcRef.current.remoteDescription) {
+            await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          } else {
+            iceQueueRef.current.push(candidate);
+          }
         }
       } catch {}
     };

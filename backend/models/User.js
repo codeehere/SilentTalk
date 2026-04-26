@@ -95,7 +95,6 @@ userSchema.methods.comparePin = async function (candidatePin) {
 
 // ── Indexes ───────────────────────────────────────────────────────────────────
 userSchema.index({ uniqueId: 1 });
-userSchema.index({ email: 1 });
 
 const User = mongoose.model('User', userSchema);
 module.exports = User;

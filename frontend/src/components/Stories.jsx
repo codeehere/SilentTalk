@@ -29,17 +29,20 @@ export default function Stories({ onBack }) {
   const fileRef = useRef();
   const timerRef = useRef(null);
 
+  const [isPaused, setIsPaused] = useState(false);
+  const [mutedUsers, setMutedUsers] = useState(() => JSON.parse(localStorage.getItem('st_muted_stories') || '[]'));
+
   useEffect(() => { fetchStories(); }, []);
 
   // Auto-advance timer
   useEffect(() => {
-    if (!selectedGroup) return;
+    if (!selectedGroup || isPaused) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     const item = selectedGroup.items[storyIndex];
     if (!item || item.mediaType === 'video') return; // videos use onEnded
     timerRef.current = setTimeout(() => advanceStory(), 5000);
     return () => clearTimeout(timerRef.current);
-  }, [selectedGroup, storyIndex]);
+  }, [selectedGroup, storyIndex, isPaused]);
 
   const fetchStories = async () => {
     const res = await authFetch(`${API}/api/stories`);
@@ -121,6 +124,27 @@ export default function Stories({ onBack }) {
 
   const isSeen = (group) => group.items.every(s => s.viewers?.some(v => v.userId === user._id));
 
+  const deleteStory = async (storyId) => {
+    if (!confirm('Delete this story?')) return;
+    const res = await authFetch(`${API}/api/stories/${storyId}`, { method: 'DELETE' });
+    if (res.ok) {
+      setSelectedGroup(null);
+      fetchStories();
+    }
+  };
+
+  const toggleMute = (e, uid) => {
+    e.stopPropagation();
+    const newMuted = mutedUsers.includes(uid) ? mutedUsers.filter(id => id !== uid) : [...mutedUsers, uid];
+    setMutedUsers(newMuted);
+    localStorage.setItem('st_muted_stories', JSON.stringify(newMuted));
+    if (selectedGroup && selectedGroup.user._id === uid) setSelectedGroup(null);
+  };
+
+  const myGroup = stories.find(g => g.user._id === user._id);
+  const otherStories = stories.filter(g => g.user._id !== user._id && !mutedUsers.includes(g.user._id));
+  const mutedStoriesList = stories.filter(g => g.user._id !== user._id && mutedUsers.includes(g.user._id));
+
   return (
     <div className="section-pane">
       <div className="panel-header">
@@ -149,7 +173,28 @@ export default function Stories({ onBack }) {
           </div>
 
           {/* Contact Story Cards */}
-          {stories.map(group => {
+          {myGroup && (
+            <div
+              className={`story-account-card ${selectedGroup?.user._id === myGroup.user._id ? 'story-card-active' : ''}`}
+              style={{ background: 'var(--bg-hover)', border: '1px solid var(--accent)', borderRadius: 12 }}
+              onClick={() => openStory(myGroup)}
+            >
+              <div className={`story-card-preview ${isSeen(myGroup) ? 'story-card-seen' : 'story-card-unseen'}`} style={{ borderColor: 'var(--accent)' }}>
+                {myGroup.items[0]?.mediaType !== 'video' && myGroup.items[0]?.mediaUrl && (
+                  <img src={resolveMedia(myGroup.items[0].mediaUrl, API)} alt="" className="story-card-bg-img" />
+                )}
+                <div className="story-card-avatar-wrap">
+                  {myGroup.user.avatar
+                    ? <img src={myGroup.user.avatar} alt="" className="story-card-avatar" />
+                    : <div className="story-card-avatar-fallback">{(myGroup.user.username || '?')[0].toUpperCase()}</div>
+                  }
+                </div>
+              </div>
+              <div className="story-card-label" style={{ fontWeight: 600, color: 'var(--accent)' }}>My Story</div>
+            </div>
+          )}
+
+          {otherStories.map(group => {
             const seen = isSeen(group);
             const previewItem = group.items[0];
             return (
@@ -176,17 +221,44 @@ export default function Stories({ onBack }) {
                         </div>
                     }
                   </div>
-                  {/* View count */}
-                  <div className="story-card-meta">
-                    <FiEye size={10} />
-                    <span>{group.items.reduce((acc, s) => acc + (s.viewers?.length || 0), 0)}</span>
-                  </div>
                 </div>
                 <div className="story-card-label">{group.user.username || 'User'}</div>
                 {!seen && <div className="story-card-unseen-dot" />}
+                <button className="icon-btn story-mute-btn" onClick={(e) => toggleMute(e, group.user._id)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', opacity: 0.5, zIndex: 10 }}>
+                  <FiX size={14} title="Mute Story" />
+                </button>
               </div>
             );
           })}
+
+          {mutedStoriesList.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', padding: '16px 16px 8px' }}>
+                Muted Updates
+              </div>
+              {mutedStoriesList.map(group => (
+                <div
+                  key={group.user._id}
+                  className="story-account-card"
+                  style={{ opacity: 0.6 }}
+                  onClick={() => openStory(group)}
+                >
+                  <div className="story-card-preview story-card-seen">
+                    <div className="story-card-avatar-wrap">
+                      {group.user.avatar
+                        ? <img src={group.user.avatar} alt="" className="story-card-avatar" />
+                        : <div className="story-card-avatar-fallback">{(group.user.username || '?')[0].toUpperCase()}</div>
+                      }
+                    </div>
+                  </div>
+                  <div className="story-card-label">{group.user.username || 'User'}</div>
+                  <button className="icon-btn story-mute-btn" onClick={(e) => toggleMute(e, group.user._id)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', opacity: 0.8, zIndex: 10 }}>
+                    <FiPlus size={14} title="Unmute Story" />
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
 
           {stories.length === 0 && (
             <div className="task-empty-group" style={{ textAlign: 'center', padding: '32px 16px' }}>
@@ -198,14 +270,19 @@ export default function Stories({ onBack }) {
         {/* RIGHT: Story Viewer Panel */}
         <div className="story-viewer-panel">
           {selectedGroup ? (
-            <StoryViewer
-              group={selectedGroup}
-              index={storyIndex}
-              onNext={advanceStory}
-              onPrev={prevStory}
-              onClose={() => setSelectedGroup(null)}
-              API={API}
-            />
+              <StoryViewer
+                group={selectedGroup}
+                index={storyIndex}
+                onNext={advanceStory}
+                onPrev={prevStory}
+                onClose={() => setSelectedGroup(null)}
+                API={API}
+                onDelete={() => deleteStory(selectedGroup.items[storyIndex]._id)}
+                isOwnStory={selectedGroup.user._id === user._id}
+                onPointerDown={() => setIsPaused(true)}
+                onPointerUp={() => setIsPaused(false)}
+                isPaused={isPaused}
+              />
           ) : (
             <div className="task-detail-empty">
               <div className="task-detail-empty-icon">
@@ -230,18 +307,23 @@ export default function Stories({ onBack }) {
   );
 }
 
-function StoryViewer({ group, index, onNext, onPrev, onClose, API }) {
+function StoryViewer({ group, index, onNext, onPrev, onClose, API, onDelete, isOwnStory, onPointerDown, onPointerUp, isPaused }) {
   const item = group.items[index];
   const total = group.items.length;
 
   return (
-    <div className="story-viewer-container">
+    <div 
+      className="story-viewer-container"
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerUp}
+    >
       {/* Progress bars */}
       <div className="story-viewer-progress">
         {group.items.map((_, i) => (
           <div key={i} className="story-progress-bar">
             <div
-              className={`story-progress-bar-fill ${i < index ? 'full' : i === index ? 'animating' : ''}`}
+              className={`story-progress-bar-fill ${i < index ? 'full' : i === index && !isPaused ? 'animating' : i === index && isPaused ? 'paused' : ''}`}
               key={`${group.user._id}-${index}-${i}`}
             />
           </div>
@@ -254,13 +336,18 @@ function StoryViewer({ group, index, onNext, onPrev, onClose, API }) {
           ? <img src={group.user.avatar} alt="" className="story-viewer-avatar" />
           : <div className="story-viewer-avatar-fallback">{(group.user.username || '?')[0].toUpperCase()}</div>
         }
-        <div>
+        <div style={{ flex: 1 }}>
           <div className="story-viewer-name">{group.user.username}</div>
           <div className="story-viewer-time">
             {item?.createdAt ? new Date(item.createdAt).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : ''}
           </div>
         </div>
-        <button className="story-viewer-close" onClick={onClose}><FiX size={18} /></button>
+        {isOwnStory && (
+          <button className="icon-btn" onClick={(e) => { e.stopPropagation(); onDelete(); }} style={{ marginRight: 8, color: 'var(--red)', background: 'rgba(0,0,0,0.5)' }}>
+            <FiX size={16} title="Delete Story" />
+          </button>
+        )}
+        <button className="story-viewer-close" onClick={onClose} style={{ background: 'rgba(0,0,0,0.5)' }}><FiX size={18} /></button>
       </div>
 
       {/* Media */}
@@ -274,6 +361,11 @@ function StoryViewer({ group, index, onNext, onPrev, onClose, API }) {
               muted={false}
               className="story-viewer-img"
               onEnded={onNext}
+              ref={(vid) => {
+                if (!vid) return;
+                if (isPaused) vid.pause();
+                else vid.play().catch(()=>{});
+              }}
             />
           : <img
               key={item?._id}

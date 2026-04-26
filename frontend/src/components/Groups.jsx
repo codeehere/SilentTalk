@@ -56,7 +56,11 @@ export default function Groups({ onSelectGroup }) {
         )}
         {groups.map(g => (
           <div key={g._id} className="contact-item" onClick={() => onSelectGroup(g)}>
-            <div className="avatar-fallback" style={{ width: 44, height: 44 }}>{g.name[0]?.toUpperCase() || '?'}</div>
+            {g.avatarUrl ? (
+              <img src={g.avatarUrl} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover' }} />
+            ) : (
+              <div className="avatar-fallback" style={{ width: 44, height: 44 }}>{g.name[0]?.toUpperCase() || '?'}</div>
+            )}
             <div className="contact-info">
               <div className="contact-name">{g.name}</div>
               <div className="contact-preview">

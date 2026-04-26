@@ -24,6 +24,7 @@ export default function Settings({ wallpapers = {}, onWallpaperChange, onViewCha
   const [notifications, setNotifications] = useState(user?.settings?.notifications ?? true);
   const [readReceipts, setReadReceipts] = useState(user?.settings?.readReceipts ?? true);
   const [lastSeenVisible, setLastSeenVisible] = useState(user?.settings?.lastSeenVisible ?? true);
+  const [privacyPin, setPrivacyPin] = useState('');
   const [showWallpaperPicker, setShowWallpaperPicker] = useState(false);
   const [avatarCropSrc, setAvatarCropSrc] = useState(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -362,6 +363,39 @@ export default function Settings({ wallpapers = {}, onWallpaperChange, onViewCha
               <div className={`toggle ${val ? 'on' : ''}`} onClick={() => set(!val)} />
             </div>
           ))}
+          <div className="settings-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+            <div>
+              <div className="settings-row-label">Privacy PIN</div>
+              <div className="settings-row-desc">Set a 4-digit PIN to secure your locked chats.</div>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <input 
+                className="input" 
+                type="password" 
+                placeholder="••••" 
+                maxLength={4} 
+                value={privacyPin} 
+                onChange={e => setPrivacyPin(e.target.value.replace(/\D/g, ''))} 
+                style={{ width: 80, textAlign: 'center', letterSpacing: 4 }} 
+              />
+              <button className="btn btn-secondary" onClick={async () => {
+                try {
+                  const res = await authFetch(`${API}/api/users/privacy-pin`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin: privacyPin })
+                  });
+                  if (res.ok) {
+                    alert('Privacy PIN saved successfully!');
+                    setPrivacyPin('');
+                  } else {
+                    const d = await res.json();
+                    alert(d.message);
+                  }
+                } catch (e) { alert(e.message); }
+              }}>Save PIN</button>
+            </div>
+          </div>
         </div>
 
         {/* Business Settings */}
@@ -374,7 +408,23 @@ export default function Settings({ wallpapers = {}, onWallpaperChange, onViewCha
               <div className="settings-row-label">Business Account</div>
               <div className="settings-row-desc">Enable store features and public catalog</div>
             </div>
-            <div className={`toggle ${isBusiness ? 'on' : ''}`} onClick={() => setIsBusiness(!isBusiness)} />
+            <div className={`toggle ${isBusiness ? 'on' : ''}`} onClick={async () => {
+              const newValue = !isBusiness;
+              setIsBusiness(newValue);
+              if (!newValue) {
+                try {
+                  const res = await authFetch(`${API}/api/store/profile`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isBusiness: false })
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    updateUser({ ...user, ...data });
+                  }
+                } catch {}
+              }
+            }} />
           </div>
           
           {isBusiness && (

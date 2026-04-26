@@ -5,7 +5,8 @@ import {
   FiCornerUpLeft, FiTrash2, FiCheck, FiX, FiSearch, FiImage, FiSlash,
   FiUserMinus, FiImage as FiWallpaper, FiChevronUp, FiChevronDown,
   FiStopCircle, FiPlay, FiPause, FiFile, FiCalendar, FiCheckSquare, FiUser, FiShoppingBag,
-  FiPackage, FiTruck, FiStar, FiExternalLink, FiAlertCircle, FiClock
+  FiPackage, FiTruck, FiStar, FiExternalLink, FiAlertCircle, FiClock,
+  FiMapPin, FiLock, FiArchive
 } from 'react-icons/fi';
 import { BsCheckAll } from 'react-icons/bs';
 import { useAuth } from '../contexts/AuthContext';
@@ -195,6 +196,85 @@ function OrderUpdateCard({ orderData: raw }) {
           Auto-updates with every order status change
         </div>
       </div>
+
+      {/* Modals */}
+      {showDeleteModal && (
+        <div className="modal-backdrop" onClick={() => setShowDeleteModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <h3 className="modal-title">Delete Chat</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 20, fontSize: 14 }}>
+              Are you sure you want to delete your chat with <strong>{showDeleteModal.username || showDeleteModal.email}</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setShowDeleteModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={async () => {
+                try {
+                  await authFetch(`${API}/api/users/contacts/${showDeleteModal._id}?bothSides=false`, { method: 'DELETE' });
+                  window.dispatchEvent(new Event('chat-metadata-updated'));
+                  window.location.reload(); // Refresh to clear active chat state
+                } catch (err) { alert(err.message); }
+              }}>Delete for me</button>
+              <button className="btn btn-danger" onClick={async () => {
+                try {
+                  await authFetch(`${API}/api/users/contacts/${showDeleteModal._id}?bothSides=true`, { method: 'DELETE' });
+                  window.dispatchEvent(new Event('chat-metadata-updated'));
+                  window.location.reload(); // Refresh to clear active chat state
+                } catch (err) { alert(err.message); }
+              }}>Delete for both</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLockModal && (
+        <div className="modal-backdrop" onClick={() => { setShowLockModal(null); setLockPin(''); setLockError(''); }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360 }}>
+            <h3 className="modal-title">Enter Privacy PIN</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 13 }}>
+              Please enter your 4-digit Privacy PIN to {showLockModal.action === 'open' ? 'open this chat' : 'toggle lock status'}.
+              <br /><br />
+              <span style={{ fontSize: 11, opacity: 0.8 }}>If this is your first time, the PIN you enter will become your permanent Privacy PIN.</span>
+            </p>
+            <input 
+              type="password" 
+              className="input" 
+              placeholder="••••" 
+              maxLength={4}
+              value={lockPin} 
+              onChange={e => { setLockPin(e.target.value); setLockError(''); }}
+              style={{ textAlign: 'center', fontSize: 24, letterSpacing: 8, marginBottom: 10 }}
+              autoFocus
+            />
+            {lockError && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10, textAlign: 'center' }}>{lockError}</div>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
+              <button className="btn btn-ghost" onClick={() => { setShowLockModal(null); setLockPin(''); setLockError(''); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={async () => {
+                if (lockPin.length !== 4) return setLockError('PIN must be 4 digits');
+                try {
+                  const res = await authFetch(`${API}/api/users/verify-pin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin: lockPin })
+                  });
+                  if (res.ok) {
+                    if (showLockModal.action === 'toggle') {
+                      await authFetch(`${API}/api/users/lock/${showLockModal.contact._id}`, { method: 'PUT' });
+                      window.dispatchEvent(new Event('chat-metadata-updated'));
+                    }
+                    setShowLockModal(null);
+                    setLockPin('');
+                    setLockError('');
+                  } else {
+                    const data = await res.json();
+                    setLockError(data.message || 'Incorrect PIN');
+                  }
+                } catch { setLockError('Network error'); }
+              }}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -247,6 +327,10 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
   const [searchIndex, setSearchIndex] = useState(0);
   const [viewMedia, setViewMedia] = useState(null);
   const [matchIndices, setMatchIndices] = useState([]);
+  const [showDeleteModal, setShowDeleteModal] = useState(null);
+  const [showLockModal, setShowLockModal] = useState(null);
+  const [lockPin, setLockPin] = useState('');
+  const [lockError, setLockError] = useState('');
 
   // Media upload state
   const [mediaPreviews, setMediaPreviews] = useState([]); // [{ file, objectUrl, mediaType }]
@@ -1435,19 +1519,17 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
           
           {/* Chat Actions in Header Menu */}
           <button className="more-menu-item" onClick={() => { setShowMoreMenu(false); /* Handled by user profile panel/search if needed */ setShowProfilePanel(true); }}>
-            👤 View Profile
+            <FiUser size={15} /> View Profile
           </button>
           
-          {/* We'll use window.dispatchEvent to notify ChatList about these actions if we want it to react immediately, 
-              or just rely on the next fetch. For now, we'll just show the buttons that call the toggle API. */}
           <button className="more-menu-item" onClick={async () => { await authFetch(`${API}/api/users/pin/${contact._id}`, { method: 'PUT' }); setShowMoreMenu(false); window.dispatchEvent(new Event('chat-metadata-updated')); }}>
-            📌 Toggle Pin
+            <FiMapPin size={15} /> Toggle Pin
           </button>
-          <button className="more-menu-item" onClick={async () => { await authFetch(`${API}/api/users/lock/${contact._id}`, { method: 'PUT' }); setShowMoreMenu(false); window.dispatchEvent(new Event('chat-metadata-updated')); }}>
-            🔒 Toggle Lock
+          <button className="more-menu-item" onClick={() => { setShowMoreMenu(false); setShowLockModal({ action: 'toggle', contact }); }}>
+            <FiLock size={15} /> Toggle Lock
           </button>
           <button className="more-menu-item" onClick={async () => { await authFetch(`${API}/api/users/archive/${contact._id}`, { method: 'PUT' }); setShowMoreMenu(false); window.dispatchEvent(new Event('chat-metadata-updated')); }}>
-            📥 Toggle Archive
+            <FiArchive size={15} /> Toggle Archive
           </button>
 
           <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
@@ -1461,8 +1543,8 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
               <FiSlash size={15} /> Block User
             </button>
           )}
-          <button className="more-menu-item danger" onClick={() => { handleRemoveContact(contact); setShowMoreMenu(false); }}>
-            <FiUserMinus size={15} /> Remove Contact
+          <button className="more-menu-item danger" onClick={() => { setShowMoreMenu(false); setShowDeleteModal(contact); }}>
+            <FiTrash2 size={15} /> Delete Chat
           </button>
         </div>,
         document.body
