@@ -196,85 +196,6 @@ function OrderUpdateCard({ orderData: raw }) {
           Auto-updates with every order status change
         </div>
       </div>
-
-      {/* Modals */}
-      {showDeleteModal && (
-        <div className="modal-backdrop" onClick={() => setShowDeleteModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
-            <h3 className="modal-title">Delete Chat</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: 20, fontSize: 14 }}>
-              Are you sure you want to delete your chat with <strong>{showDeleteModal.username || showDeleteModal.email}</strong>?
-            </p>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="btn btn-ghost" onClick={() => setShowDeleteModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={async () => {
-                try {
-                  await authFetch(`${API}/api/users/contacts/${showDeleteModal._id}?bothSides=false`, { method: 'DELETE' });
-                  window.dispatchEvent(new Event('chat-metadata-updated'));
-                  window.location.reload(); // Refresh to clear active chat state
-                } catch (err) { alert(err.message); }
-              }}>Delete for me</button>
-              <button className="btn btn-danger" onClick={async () => {
-                try {
-                  await authFetch(`${API}/api/users/contacts/${showDeleteModal._id}?bothSides=true`, { method: 'DELETE' });
-                  window.dispatchEvent(new Event('chat-metadata-updated'));
-                  window.location.reload(); // Refresh to clear active chat state
-                } catch (err) { alert(err.message); }
-              }}>Delete for both</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showLockModal && (
-        <div className="modal-backdrop" onClick={() => { setShowLockModal(null); setLockPin(''); setLockError(''); }}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360 }}>
-            <h3 className="modal-title">Enter Privacy PIN</h3>
-            <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 13 }}>
-              Please enter your 4-digit Privacy PIN to {showLockModal.action === 'open' ? 'open this chat' : 'toggle lock status'}.
-              <br /><br />
-              <span style={{ fontSize: 11, opacity: 0.8 }}>If this is your first time, the PIN you enter will become your permanent Privacy PIN.</span>
-            </p>
-            <input 
-              type="password" 
-              className="input" 
-              placeholder="••••" 
-              maxLength={4}
-              value={lockPin} 
-              onChange={e => { setLockPin(e.target.value); setLockError(''); }}
-              style={{ textAlign: 'center', fontSize: 24, letterSpacing: 8, marginBottom: 10 }}
-              autoFocus
-            />
-            {lockError && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10, textAlign: 'center' }}>{lockError}</div>}
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
-              <button className="btn btn-ghost" onClick={() => { setShowLockModal(null); setLockPin(''); setLockError(''); }}>Cancel</button>
-              <button className="btn btn-primary" onClick={async () => {
-                if (lockPin.length !== 4) return setLockError('PIN must be 4 digits');
-                try {
-                  const res = await authFetch(`${API}/api/users/verify-pin`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pin: lockPin })
-                  });
-                  if (res.ok) {
-                    if (showLockModal.action === 'toggle') {
-                      await authFetch(`${API}/api/users/lock/${showLockModal.contact._id}`, { method: 'PUT' });
-                      window.dispatchEvent(new Event('chat-metadata-updated'));
-                    }
-                    setShowLockModal(null);
-                    setLockPin('');
-                    setLockError('');
-                  } else {
-                    const data = await res.json();
-                    setLockError(data.message || 'Incorrect PIN');
-                  }
-                } catch { setLockError('Network error'); }
-              }}>Confirm</button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
@@ -1549,6 +1470,85 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
         </div>,
         document.body
       )}
+
+      {/* Modals */}
+      {showDeleteModal && (
+        <div className="modal-backdrop" onClick={() => setShowDeleteModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <h3 className="modal-title">Delete Chat</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 20, fontSize: 14 }}>
+              Are you sure you want to delete your chat with <strong>{showDeleteModal.username || showDeleteModal.email}</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setShowDeleteModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={async () => {
+                try {
+                  await authFetch(`${API}/api/users/contacts/${showDeleteModal._id}?bothSides=false`, { method: 'DELETE' });
+                  window.dispatchEvent(new Event('chat-metadata-updated'));
+                  window.location.reload(); // Refresh to clear active chat state
+                } catch (err) { alert(err.message); }
+              }}>Delete for me</button>
+              <button className="btn btn-danger" onClick={async () => {
+                try {
+                  await authFetch(`${API}/api/users/contacts/${showDeleteModal._id}?bothSides=true`, { method: 'DELETE' });
+                  window.dispatchEvent(new Event('chat-metadata-updated'));
+                  window.location.reload(); // Refresh to clear active chat state
+                } catch (err) { alert(err.message); }
+              }}>Delete for both</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLockModal && (
+        <div className="modal-backdrop" onClick={() => { setShowLockModal(null); setLockPin(''); setLockError(''); }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360 }}>
+            <h3 className="modal-title">Enter Privacy PIN</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 13 }}>
+              Please enter your 4-digit Privacy PIN to {showLockModal.action === 'open' ? 'open this chat' : 'toggle lock status'}.
+              <br /><br />
+              <span style={{ fontSize: 11, opacity: 0.8 }}>If this is your first time, the PIN you enter will become your permanent Privacy PIN.</span>
+            </p>
+            <input 
+              type="password" 
+              className="input" 
+              placeholder="••••" 
+              maxLength={4}
+              value={lockPin} 
+              onChange={e => { setLockPin(e.target.value); setLockError(''); }}
+              style={{ textAlign: 'center', fontSize: 24, letterSpacing: 8, marginBottom: 10 }}
+              autoFocus
+            />
+            {lockError && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10, textAlign: 'center' }}>{lockError}</div>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
+              <button className="btn btn-ghost" onClick={() => { setShowLockModal(null); setLockPin(''); setLockError(''); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={async () => {
+                if (lockPin.length !== 4) return setLockError('PIN must be 4 digits');
+                try {
+                  const res = await authFetch(`${API}/api/users/verify-pin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin: lockPin })
+                  });
+                  if (res.ok) {
+                    if (showLockModal.action === 'toggle') {
+                      await authFetch(`${API}/api/users/lock/${showLockModal.contact._id}`, { method: 'PUT' });
+                      window.dispatchEvent(new Event('chat-metadata-updated'));
+                    }
+                    setShowLockModal(null);
+                    setLockPin('');
+                    setLockError('');
+                  } else {
+                    const data = await res.json();
+                    setLockError(data.message || 'Incorrect PIN');
+                  }
+                } catch { setLockError('Network error'); }
+              }}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
