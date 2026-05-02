@@ -16,12 +16,26 @@ const app = express();
 // Trust proxy (needed for accurate rate-limit by IP behind load balancers/nginx)
 app.set('trust proxy', 1);
 
-// Allowed origins
-const devOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'http://localhost:3000'];
-const allowedOrigins = (process.env.CORS_ORIGIN || '')
+// ── CORS origin allowlist ────────────────────────────────────────────────────
+// CORS_ORIGIN env var (comma-separated) holds the production/staging origins.
+// Dev origins are ONLY added when CORS_ORIGIN is not set at all (pure local dev).
+// This prevents a localhost dev client from connecting to the deployed server.
+const devOrigins = [
+  'http://localhost:5173', 'http://localhost:5174',
+  'http://127.0.0.1:5173', 'http://127.0.0.1:5174',
+  'http://localhost:3000'
+];
+
+const productionOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
+
+// If CORS_ORIGIN is set (i.e., we're on Railway/deployed), use ONLY those origins.
+// If CORS_ORIGIN is NOT set (pure local dev), fall back to devOrigins only.
+const allowedOrigins = productionOrigins.length > 0 ? productionOrigins : devOrigins;
+
+console.log(`[CORS] Allowed origins (${productionOrigins.length > 0 ? 'production' : 'dev-fallback'}):`, allowedOrigins);
 
 // Security headers
 app.use(helmet({
@@ -31,27 +45,20 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com'],
       mediaSrc: ["'self'", 'blob:', 'https://res.cloudinary.com'],
-      connectSrc: ["'self'", 'ws:', 'wss:', 'https://res.cloudinary.com'].concat(allowedOrigins).concat(process.env.NODE_ENV !== 'production' ? devOrigins : []),
+      connectSrc: ["'self'", 'ws:', 'wss:', 'https://res.cloudinary.com'].concat(allowedOrigins),
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
     }
   }
 }));
 
-// CORS — strict origin check
+// CORS — always use the explicit allowlist, never a wildcard
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow non-browser requests
+    // Allow non-browser requests (server-to-server, curl, health checks)
     if (!origin) return callback(null, true);
-    
-    // Allow if explicitly in allowedOrigins
     if (allowedOrigins.includes(origin)) return callback(null, true);
-    
-    // Allow localhost ONLY if NOT in production
-    if (process.env.NODE_ENV !== 'production' && devOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    
+    console.warn(`[CORS] Blocked origin: ${origin}`);
     callback(new Error(`CORS: origin '${origin}' not allowed`));
   },
   credentials: true
@@ -136,10 +143,13 @@ app.use((err, req, res, next) => {
 });
 
 // ─── Socket.io ───────────────────────────────────────────────────────────────
+// IMPORTANT: Never use `origin: true` here — that would allow any client
+// (including a localhost dev build) to connect to the production Socket.IO
+// server and send real-time messages to live users.
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV !== 'production' ? true : allowedOrigins,
+    origin: allowedOrigins,   // Always the explicit list — same as HTTP CORS
     methods: ['GET', 'POST'],
     credentials: true
   }
