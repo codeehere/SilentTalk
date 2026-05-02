@@ -69,7 +69,7 @@ router.get('/contacts', protect, async (req, res) => {
       .populate('contacts', 'uniqueId username avatar bio isOnline lastSeen publicKey isBusiness')
       .populate('pendingContacts', 'uniqueId username avatar bio isOnline lastSeen publicKey isBusiness');
       
-    // Calculate unreads
+    // Calculate unreads and last message
     const contactsWithUnread = await Promise.all(user.contacts.map(async (c) => {
       const unreadCount = await Message.countDocuments({ 
         senderId: c._id, 
@@ -77,7 +77,26 @@ router.get('/contacts', protect, async (req, res) => {
         status: { $ne: 'read' },
         deletedFor: { $ne: req.user._id }
       });
-      return { ...c.toObject(), unreadCount };
+
+      const lastMsg = await Message.findOne({
+        $or: [
+          { senderId: req.user._id, receiverId: c._id },
+          { senderId: c._id, receiverId: req.user._id }
+        ],
+        deletedFor: { $ne: req.user._id }
+      }).sort({ createdAt: -1 });
+
+      const lastMessageAt = lastMsg ? lastMsg.createdAt : null;
+      let lastMessageText = '';
+      if (lastMsg) {
+        if (lastMsg.senderId.toString() === req.user._id.toString()) {
+          lastMessageText = `You: ${lastMsg.text ? 'Message' : (lastMsg.mediaUrl ? 'Media' : '')}`;
+        } else {
+          lastMessageText = lastMsg.text ? 'Message' : (lastMsg.mediaUrl ? 'Media' : '');
+        }
+      }
+
+      return { ...c.toObject(), unreadCount, lastMessageAt, lastMessageText };
     }));
       
     res.json({ 

@@ -79,18 +79,30 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
 
     const onEvent = (data) => {
       const incomingId = data.groupId || data.senderId || data.from; // group, message, or call
+      const previewText = data.text || (data.mediaUrl ? 'Media' : (data.type === 'call' || data.from ? 'Call' : 'Message'));
       if (!incomingId) return;
       setContacts(prev => {
-        const updated = [...prev];
-        const existing = updated.find(c => c._id.toString() === incomingId.toString());
-        if (existing) {
-          if (incomingId.toString() !== activeContactId?.toString()) {
-            existing.unreadCount = (existing.unreadCount || 0) + 1;
+        const updated = prev.map(c => {
+          if (c._id.toString() === incomingId.toString()) {
+            return {
+              ...c,
+              lastMessageAt: new Date().toISOString(), // bump timestamp to top
+              lastMessageText: previewText,
+              unreadCount: incomingId.toString() !== activeContactId?.toString()
+                ? (c.unreadCount || 0) + 1
+                : c.unreadCount
+            };
           }
-        } else {
-          fetchAndAddMissingContact(incomingId);
-        }
-        return updated;
+          return c;
+        });
+        const exists = updated.some(c => c._id.toString() === incomingId.toString());
+        if (!exists) fetchAndAddMissingContact(incomingId);
+        // Re-sort: most recent first (pinned handled in displayList)
+        return [...updated].sort((a, b) => {
+          const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+          const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+          return bTime - aTime;
+        });
       });
     };
 
@@ -110,12 +122,26 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
     const onMetadataUpdate = () => fetchContacts();
     window.addEventListener('chat-metadata-updated', onMetadataUpdate);
 
+    const onMessageSent = (e) => {
+      const { contactId, text } = e.detail;
+      setContacts(prev => {
+        const updated = prev.map(c => c._id.toString() === contactId.toString() ? { ...c, lastMessageAt: new Date().toISOString(), lastMessageText: `You: ${text}` } : c);
+        return [...updated].sort((a, b) => {
+          const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+          const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+          return bTime - aTime;
+        });
+      });
+    };
+    window.addEventListener('message-sent', onMessageSent);
+
     return () => {
       off('message:receive', onEvent);
       off('call:incoming', onEvent);
       off('message:read_all_confirmed', onReadAllConfirmed);
       off('user:profile_updated', onProfileUpdate);
       window.removeEventListener('chat-metadata-updated', onMetadataUpdate);
+      window.removeEventListener('message-sent', onMessageSent);
     };
   }, [on, off, activeContactId]);
 
@@ -146,6 +172,14 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
         if (activeContactId) {
           fetchedContacts = fetchedContacts.map(c => c._id === activeContactId ? { ...c, unreadCount: 0 } : c);
         }
+
+        // Sort by most recent message first (server returns lastMessageAt)
+        fetchedContacts.sort((a, b) => {
+          const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+          const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+          return bTime - aTime;
+        });
+
         setContacts(fetchedContacts);
         try { localStorage.setItem('st_contacts_cache', JSON.stringify(fetchedContacts)); } catch (e) {}
         setPendingContacts(data.pendingContacts || []);
@@ -223,13 +257,16 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
     // Filter out ONLY archived chats from main list, locked chats stay but require PIN
     const mainList = contacts.filter(c => !archivedChats.includes(c._id));
     
-    // Sort: Pinned first, then by last message/online if needed
+    // Sort: Pinned first, then most recent message
     return [...mainList].sort((a, b) => {
       const aPinned = pinnedChats.includes(a._id);
       const bPinned = pinnedChats.includes(b._id);
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
-      return 0; // Keep original order (last message)
+      // Both same pin status — sort by most recent message
+      const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+      const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+      return bTime - aTime;
     });
   })();
 
@@ -378,7 +415,7 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
                 <div className="contact-preview">
                   {isResult && !alreadyAdded
                     ? <span style={{ color: 'var(--accent)' }}>+ Add contact</span>
-                    : `@${contact.uniqueId}`}
+                    : (contact.lastMessageText || `@${contact.uniqueId}`)}
                 </div>
               </div>
               {contact.unreadCount > 0 && !isResult && activeTab === 'chats' && (

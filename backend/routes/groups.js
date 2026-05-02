@@ -23,7 +23,23 @@ router.get('/', protect, async (req, res) => {
     const groups = await Group.find({ 'members.userId': req.user._id })
       .populate('members.userId', 'username avatar uniqueId isOnline')
       .populate('createdBy', 'username avatar');
-    res.json(groups);
+
+    const Message = require('../models/Message');
+    const groupsWithLastMessage = await Promise.all(groups.map(async (g) => {
+      const lastMsg = await Message.findOne({ groupId: g._id }).sort({ createdAt: -1 });
+      const lastMessageAt = lastMsg ? lastMsg.createdAt : null;
+      let lastMessageText = '';
+      if (lastMsg) {
+        if (lastMsg.senderId.toString() === req.user._id.toString()) {
+          lastMessageText = `You: ${lastMsg.text ? 'Message' : (lastMsg.mediaUrl ? 'Media' : '')}`;
+        } else {
+          lastMessageText = lastMsg.text ? 'Message' : (lastMsg.mediaUrl ? 'Media' : '');
+        }
+      }
+      return { ...g.toObject(), lastMessageAt, lastMessageText };
+    }));
+
+    res.json(groupsWithLastMessage);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

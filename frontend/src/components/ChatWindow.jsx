@@ -575,6 +575,7 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
       replyTo: replyTo || undefined
     };
     setMessages(prev => [...prev, optimistic]);
+    window.dispatchEvent(new CustomEvent('message-sent', { detail: { contactId: contact._id, text: typeof text === 'object' ? 'Message' : (text || (mediaUrl ? 'Media' : '')) } }));
 
     const payloadObj = {
       text: (ciphertext && !isGroup) ? '' : (typeof text === 'object' ? JSON.stringify(text) : (text || '')),
@@ -826,19 +827,178 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
 
   if (!contact) {
     return (
-      <div className="chat-window hidden-on-mobile">
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <FiCheck size={32} color="var(--accent)" />
+      <div className="chat-window hidden-on-mobile" style={{ position:'relative', overflow:'hidden', background:'#030308' }}>
+        <style>{`
+          /* ── Aurora blobs: large radial gradients, only transform animated ── */
+          .au-blob {
+            position: absolute;
+            border-radius: 50%;
+            will-change: transform, opacity;
+          }
+
+          /* 6 blob drift paths — only translate+scale (compositor thread only) */
+          @keyframes au-a {
+            0%,100% { transform: translate(0px,   0px)   scale(1); }
+            33%     { transform: translate(120px,-80px)  scale(1.12); }
+            66%     { transform: translate(-60px, 100px) scale(0.9); }
+          }
+          @keyframes au-b {
+            0%,100% { transform: translate(0px,  0px)   scale(1); }
+            30%     { transform: translate(-140px, 60px) scale(1.18); }
+            65%     { transform: translate(80px,-120px) scale(0.85); }
+          }
+          @keyframes au-c {
+            0%,100% { transform: translate(0px, 0px)    scale(1); }
+            40%     { transform: translate(100px,130px) scale(1.1); }
+            75%     { transform: translate(-80px,-60px) scale(0.92); }
+          }
+          @keyframes au-d {
+            0%,100% { transform: translate(0px,  0px)  scale(1); }
+            25%     { transform: translate(-100px,-90px) scale(1.15); }
+            60%     { transform: translate(60px, 100px) scale(0.88); }
+          }
+          @keyframes au-e {
+            0%,100% { transform: translate(0px,0px)     scale(1); }
+            35%     { transform: translate(80px, 80px)  scale(1.08); }
+            70%     { transform: translate(-120px,40px) scale(0.94); }
+          }
+          @keyframes au-f {
+            0%,100% { transform: translate(0px,   0px) scale(1); }
+            45%     { transform: translate(-70px,-110px) scale(1.2); }
+            80%     { transform: translate(90px,  70px) scale(0.87); }
+          }
+
+          /* Blob opacity breathing */
+          @keyframes au-breathe {
+            0%,100% { opacity: 0.55; }
+            50%     { opacity: 0.85; }
+          }
+          @keyframes au-breathe2 {
+            0%,100% { opacity: 0.45; }
+            50%     { opacity: 0.75; }
+          }
+
+          /* ── Centre card ── */
+          .au-card {
+            position: absolute; inset: 0;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 0; pointer-events: none; user-select: none;
+          }
+
+          /* Icon ring pulse */
+          @keyframes au-ring-pulse {
+            0%,100% { transform: scale(1);   opacity: 0.5; }
+            50%     { transform: scale(1.12); opacity: 0.9; }
+          }
+          @keyframes au-ring2 {
+            0%   { transform: scale(1);   opacity: 0.35; }
+            100% { transform: scale(1.9); opacity: 0; }
+          }
+
+          /* Gradient text shimmer (background-position on a wide gradient) */
+          @keyframes au-shimmer {
+            0%   { background-position: 200% center; }
+            100% { background-position: -200% center; }
+          }
+
+          /* Fade in up for card */
+          @keyframes au-card-in {
+            0%   { transform: translateY(16px); opacity: 0; }
+            100% { transform: translateY(0px);  opacity: 1; }
+          }
+        `}</style>
+
+        {/* ── Aurora blobs ─────────────────────────────────────────── */}
+        {/* [left, top, size, color, anim, dur, delay, breatheAnim, bdur, bdelay] */}
+        {[
+          ['10%', '15%', 420, 'radial-gradient(circle, #7c3aed55 0%, #7c3aed00 70%)', 'au-a', '22s', '0s',   'au-breathe',  '4s', '0s'],
+          ['60%', '5%',  380, 'radial-gradient(circle, #db277755 0%, #db277700 70%)', 'au-b', '28s', '3s',   'au-breathe2', '5s', '1s'],
+          ['80%', '50%', 360, 'radial-gradient(circle, #0891b255 0%, #0891b200 70%)', 'au-c', '25s', '6s',   'au-breathe',  '6s', '2s'],
+          ['5%',  '60%', 400, 'radial-gradient(circle, #4f46e555 0%, #4f46e500 70%)', 'au-d', '30s', '9s',   'au-breathe2', '4.5s','0.5s'],
+          ['40%', '75%', 340, 'radial-gradient(circle, #f43f5e44 0%, #f43f5e00 70%)', 'au-e', '20s', '4s',   'au-breathe',  '3.5s','1.5s'],
+          ['55%', '35%', 300, 'radial-gradient(circle, #8b5cf644 0%, #8b5cf600 70%)', 'au-f', '26s', '11s',  'au-breathe2', '5.5s','0.8s'],
+        ].map(([left, top, size, bg, anim, dur, delay, breathe, bdur, bdelay], i) => (
+          <div key={i} className="au-blob" style={{
+            left, top,
+            width: size, height: size,
+            marginLeft: -size/2, marginTop: -size/2,
+            background: bg,
+            animation: `${anim} ${dur} ease-in-out infinite ${delay}, ${breathe} ${bdur} ease-in-out infinite ${bdelay}`,
+          }} />
+        ))}
+
+        {/* ── Centre card ──────────────────────────────────────────── */}
+        <div className="au-card">
+          {/* Pulsing icon rings */}
+          <div style={{ position:'relative', width:80, height:80, marginBottom:28, animation:'au-card-in .8s ease both' }}>
+            {/* Expanding ring */}
+            <div style={{
+              position:'absolute', inset:-16, borderRadius:'50%',
+              border:'1.5px solid rgba(139,92,246,.5)',
+              animation:'au-ring2 2.4s ease-out infinite',
+            }} />
+            <div style={{
+              position:'absolute', inset:-8, borderRadius:'50%',
+              border:'1.5px solid rgba(139,92,246,.4)',
+              animation:'au-ring2 2.4s ease-out infinite .7s',
+            }} />
+            {/* Icon circle */}
+            <div style={{
+              width:80, height:80, borderRadius:'50%',
+              background:'linear-gradient(135deg, rgba(124,58,237,.3) 0%, rgba(219,39,119,.2) 100%)',
+              border:'1.5px solid rgba(139,92,246,.6)',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              boxShadow:'0 0 40px rgba(124,58,237,.35), 0 0 80px rgba(124,58,237,.15)',
+              animation:'au-ring-pulse 3s ease-in-out infinite',
+            }}>
+              {/* Lock SVG — inline, no import needed */}
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="rgba(196,181,253,.9)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
           </div>
-          <h3>End-to-End Encrypted</h3>
-          <p>Select a conversation to start chatting securely.</p>
+
+          {/* App name with shimmer gradient */}
+          <div style={{
+            fontSize:28, fontWeight:800, letterSpacing:1,
+            background:'linear-gradient(90deg, #a78bfa, #ec4899, #60a5fa, #a78bfa)',
+            backgroundSize:'300% 100%',
+            WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
+            backgroundClip:'text',
+            animation:'au-shimmer 5s linear infinite, au-card-in .9s ease .1s both',
+            marginBottom:8,
+          }}>SilentTalk</div>
+
+          {/* Tagline */}
+          <div style={{
+            fontSize:13, color:'rgba(196,181,253,.55)', letterSpacing:1,
+            animation:'au-card-in 1s ease .2s both',
+            marginBottom:6,
+          }}>Select a conversation to begin</div>
+
+          {/* E2E pill */}
+          <div style={{
+            display:'inline-flex', alignItems:'center', gap:6,
+            padding:'5px 14px', borderRadius:20, marginTop:4,
+            background:'rgba(139,92,246,.1)', border:'1px solid rgba(139,92,246,.25)',
+            animation:'au-card-in 1s ease .35s both',
+          }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="rgba(167,139,250,.8)" stroke="none">
+              <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+            </svg>
+            <span style={{ fontSize:11, color:'rgba(167,139,250,.7)', letterSpacing:1.5, fontWeight:600, textTransform:'uppercase' }}>
+              End-to-end encrypted
+            </span>
+          </div>
         </div>
       </div>
     );
   }
 
   const displayedMessages = messages;
+
   const isSearchMatch = (msg, idx) => {
     if (!showSearch || !searchQuery.trim()) return false;
     return matchIndices.includes(idx);
