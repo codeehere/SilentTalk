@@ -10,6 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const { connectDB, isDBReady } = require('./db');
 const Message = require('./models/Message');
+
 // ─── App Setup ──────────────────────────────────────────────────────────────
 const app = express();
 
@@ -17,25 +18,29 @@ const app = express();
 app.set('trust proxy', 1);
 
 // ── CORS origin allowlist ────────────────────────────────────────────────────
-// CORS_ORIGIN env var (comma-separated) holds the production/staging origins.
-// Dev origins are ONLY added when CORS_ORIGIN is not set at all (pure local dev).
-// This prevents a localhost dev client from connecting to the deployed server.
-const devOrigins = [
-  'http://localhost:5173', 'http://localhost:5174',
-  'http://127.0.0.1:5173', 'http://127.0.0.1:5174',
-  'http://localhost:3000'
-];
+// Hardcoded production URL to ensure it works even if Railway env vars are missing
+const defaultProductionOrigins = ['https://silent-talk-eosin.vercel.app'];
 
-const productionOrigins = (process.env.CORS_ORIGIN || '')
+const customOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
 
-// If CORS_ORIGIN is set (i.e., we're on Railway/deployed), use ONLY those origins.
-// If CORS_ORIGIN is NOT set (pure local dev), fall back to devOrigins only.
-const allowedOrigins = productionOrigins.length > 0 ? productionOrigins : devOrigins;
+let allowedOrigins = [...defaultProductionOrigins, ...customOrigins];
 
-console.log(`[CORS] Allowed origins (${productionOrigins.length > 0 ? 'production' : 'dev-fallback'}):`, allowedOrigins);
+// Dev origins are ONLY added when explicitly running locally.
+// We check if it's NOT production AND not running on Railway.
+const isLocalDev = process.env.NODE_ENV !== 'production' && !process.env.RAILWAY_ENVIRONMENT;
+
+if (isLocalDev) {
+  allowedOrigins.push(
+    'http://localhost:5173', 'http://localhost:5174',
+    'http://127.0.0.1:5173', 'http://127.0.0.1:5174',
+    'http://localhost:3000'
+  );
+}
+
+console.log(`[CORS] Allowed origins:`, allowedOrigins);
 
 // Security headers
 app.use(helmet({
@@ -52,12 +57,15 @@ app.use(helmet({
   }
 }));
 
-// CORS — always use the explicit allowlist, never a wildcard
+// CORS — strict origin check
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow non-browser requests (server-to-server, curl, health checks)
+    // Allow non-browser requests
     if (!origin) return callback(null, true);
+    
+    // Allow if explicitly in allowedOrigins
     if (allowedOrigins.includes(origin)) return callback(null, true);
+    
     console.warn(`[CORS] Blocked origin: ${origin}`);
     callback(new Error(`CORS: origin '${origin}' not allowed`));
   },
@@ -65,37 +73,14 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '10mb' })); // 10 MB cap — prevent JSON bomb
-app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
-// Global rate limiter
-const globalLimiter = rateLimit({
+// Basic rate limiting for standard endpoints
+const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 150 : 1000, // Increased for dev
-  message: { message: 'Too many requests, try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false
+  max: 300,
+  message: 'Too many requests, please try again later.'
 });
-app.use(globalLimiter);
-
-// Auth route strict rate limiter
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 10 : 100, // Increased for dev
-  message: { message: 'Too many auth attempts. Try again in 15 minutes.' }
-});
-app.use('/api/auth', authLimiter);
-
-// ─── DB-readiness gate ───────────────────────────────────────────────────────
-// Return 503 (not 500) if a request arrives before MongoDB is connected.
-// This prevents misleading "Internal Server Error" responses during cold-start.
-app.use('/api', (req, res, next) => {
-  if (!isDBReady()) {
-    return res.status(503).json({
-      message: 'Server is starting up, please retry in a few seconds.'
-    });
-  }
-  next();
-});
+app.use('/api', limiter);
 
 // ─── Static uploads ─────────────────────────────────────────────────────────
 // NOTE: Railway has an ephemeral filesystem — use Cloudinary for persistent media.
