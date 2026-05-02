@@ -272,9 +272,14 @@ io.on('connection', async (socket) => {
     io.to(`user:${targetId}`).emit('request-chat:access-revoked', { requestId });
   });
 
-  // ── WebRTC Call Signaling ─────────────────────────────────────────────────
-  socket.on('call:offer', ({ to, offer, callType }) => {
-    io.to(`user:${to}`).emit('call:incoming', { from: userId, offer, callType });
+  // ── WebRTC / Jitsi Call Signaling ─────────────────────────────────────────
+  socket.on('call:offer', ({ to, offer, callType, roomName }) => {
+    io.to(`user:${to}`).emit('call:incoming', { from: userId, offer, callType, roomName });
+  });
+
+  socket.on('call:offer_group', ({ groupId, callType, roomName }) => {
+    // Ring everyone in the group except the caller
+    socket.to(`group:${groupId}`).emit('call:incoming', { from: userId, groupId, callType, roomName });
   });
 
   socket.on('call:answer', ({ to, answer }) => {

@@ -121,18 +121,29 @@ function AppInner() {
     if (!user) return;
     const handleIncomingCall = async (data) => {
       // Check if blocked
-      if (blockedUsers.some(b => (b._id || b)?.toString() === data.from?.toString())) {
+      if (!data.groupId && blockedUsers.some(b => (b._id || b)?.toString() === data.from?.toString())) {
         // Automatically reject
         emit('call:reject', { to: data.from });
         return;
       }
       try {
-        const res = await fetch(`${API}/api/users/profile/${data.from}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('st_token')}` }
-        });
-        if (res.ok) {
-          const contact = await res.json();
-          setActiveCall({ contact, callType: data.callType, incoming: true, offer: data.offer });
+        if (data.groupId) {
+          const res = await fetch(`${API}/api/groups/${data.groupId}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('st_token')}` }
+          });
+          if (res.ok) {
+            const group = await res.json();
+            group.isGroup = true;
+            setActiveCall({ contact: group, callType: data.callType, incoming: true, offer: data.offer, roomName: data.roomName });
+          }
+        } else {
+          const res = await fetch(`${API}/api/users/profile/${data.from}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('st_token')}` }
+          });
+          if (res.ok) {
+            const contact = await res.json();
+            setActiveCall({ contact, callType: data.callType, incoming: true, offer: data.offer, roomName: data.roomName });
+          }
         }
       } catch {}
     };
@@ -419,6 +430,7 @@ function AppInner() {
           callType={activeCall.callType}
           incoming={activeCall.incoming}
           incomingOffer={activeCall.offer}
+          incomingRoomName={activeCall.roomName}
           onEnd={() => setActiveCall(null)}
         />
       )}
