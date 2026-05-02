@@ -21,11 +21,18 @@ const upload = multer({
       'video/mp4','video/webm',
       'audio/webm','audio/ogg','audio/mpeg','audio/mp4','audio/wav',
       'application/pdf',
-      'text/plain'
+      'text/plain',
+      // Office documents
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
       // NOTE: zip removed — too common a vector for malware delivery
     ];
     if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('File type not allowed'));
+    else cb(new Error(`File type '${file.mimetype}' not allowed`));
   }
 });
 
@@ -187,6 +194,7 @@ router.delete('/:id', protect, async (req, res) => {
       msg.deletedForEveryone = true;
       msg.ciphertext = '';
       msg.nonce = '';
+      msg.text = '';
       msg.mediaUrl = '';
       msg.mediaType = '';
     } else {

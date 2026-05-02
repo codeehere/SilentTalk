@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { FiPlus, FiX, FiChevronLeft, FiChevronRight, FiEye, FiBook } from 'react-icons/fi';
+import { FiPlus, FiX, FiChevronLeft, FiChevronRight, FiEye, FiBook, FiSend } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 import ImageCropper from './ImageCropper';
 
@@ -32,6 +32,10 @@ export default function Stories({ onBack }) {
   const [isPaused, setIsPaused] = useState(false);
   const [mutedUsers, setMutedUsers] = useState(() => JSON.parse(localStorage.getItem('st_muted_stories') || '[]'));
 
+  // Caption modal state
+  const [pendingBlob, setPendingBlob] = useState(null); // { blob, previewUrl, isVideo }
+  const [captionDraft, setCaptionDraft] = useState('');
+
   useEffect(() => { fetchStories(); }, []);
 
   // Auto-advance timer
@@ -61,23 +65,29 @@ export default function Stories({ onBack }) {
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    const isVideo = file.type.startsWith('video/');
     if (file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = () => setStoryCropSrc(reader.result);
       reader.readAsDataURL(file);
-    } else {
-      uploadStory(file);
+    } else if (isVideo) {
+      // Show caption modal directly for videos (no crop)
+      const previewUrl = URL.createObjectURL(file);
+      setPendingBlob({ blob: file, previewUrl, isVideo: true });
+      setCaptionDraft('');
     }
     e.target.value = null;
   };
 
-  const uploadStory = async (blob) => {
+  const uploadStory = async (blob, caption = '') => {
     setStoryCropSrc(null);
+    setPendingBlob(null);
+    setCaptionDraft('');
     setUploading(true);
     const form = new FormData();
     const isVideo = blob.type?.startsWith('video/');
     form.append('media', blob, isVideo ? 'story.mp4' : 'story.jpg');
-    form.append('caption', '');
+    form.append('caption', caption || '');
     const res = await authFetch(`${API}/api/stories`, { method: 'POST', body: form });
     if (res.ok) fetchStories();
     else { const err = await res.json(); alert(err.message || 'Failed to upload story'); }
@@ -299,9 +309,82 @@ export default function Stories({ onBack }) {
         <ImageCropper
           imageSrc={storyCropSrc}
           aspect={9 / 16}
-          onCropComplete={uploadStory}
+          onCropComplete={(blob) => {
+            const previewUrl = URL.createObjectURL(blob);
+            setStoryCropSrc(null);
+            setPendingBlob({ blob, previewUrl, isVideo: false });
+            setCaptionDraft('');
+          }}
           onCancel={() => setStoryCropSrc(null)}
         />
+      )}
+
+      {/* Caption Modal */}
+      {pendingBlob && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.88)',
+          backdropFilter: 'blur(20px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 20, animation: 'fadeIn 0.3s ease'
+        }}>
+          <div style={{
+            background: 'var(--bg-elevated)',
+            borderRadius: 24,
+            overflow: 'hidden',
+            width: '100%',
+            maxWidth: 400,
+            boxShadow: '0 30px 80px rgba(0,0,0,0.6)',
+            border: '1px solid var(--border)'
+          }}>
+            {/* Preview */}
+            <div style={{ position: 'relative', width: '100%', maxHeight: 360, overflow: 'hidden', background: '#000' }}>
+              {pendingBlob.isVideo
+                ? <video src={pendingBlob.previewUrl} style={{ width: '100%', maxHeight: 360, objectFit: 'contain', display: 'block' }} />
+                : <img src={pendingBlob.previewUrl} alt="Preview" style={{ width: '100%', maxHeight: 360, objectFit: 'contain', display: 'block' }} />
+              }
+            </div>
+
+            {/* Caption input */}
+            <div style={{ padding: '20px 20px 16px' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Add Caption (optional)</div>
+              <textarea
+                className="input"
+                rows={3}
+                placeholder="Write a caption for your story…"
+                value={captionDraft}
+                onChange={e => setCaptionDraft(e.target.value)}
+                maxLength={300}
+                style={{ resize: 'none', fontSize: 14, lineHeight: 1.5, marginBottom: 6 }}
+                autoFocus
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', marginBottom: 16 }}>
+                {captionDraft.length}/300
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  className="btn btn-ghost"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    URL.revokeObjectURL(pendingBlob.previewUrl);
+                    setPendingBlob(null);
+                    setCaptionDraft('');
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  style={{ flex: 2, gap: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  onClick={() => uploadStory(pendingBlob.blob, captionDraft.trim())}
+                  disabled={uploading}
+                >
+                  <FiSend size={15} /> {uploading ? 'Posting…' : 'Post Story'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

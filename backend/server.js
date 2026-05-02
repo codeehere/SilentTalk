@@ -16,9 +16,12 @@ const app = express();
 // Trust proxy (needed for accurate rate-limit by IP behind load balancers/nginx)
 app.set('trust proxy', 1);
 
-// Allowed origins — defined first so helmet CSP and CORS can both reference it
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174')
-  .split(',').map(o => o.trim());
+// Allowed origins
+const devOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'http://localhost:3000'];
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
 
 // Security headers
 app.use(helmet({
@@ -28,21 +31,28 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com'],
       mediaSrc: ["'self'", 'blob:', 'https://res.cloudinary.com'],
-      connectSrc: ["'self'", 'ws:', 'wss:'].concat(allowedOrigins),
+      connectSrc: ["'self'", 'ws:', 'wss:', 'https://res.cloudinary.com'].concat(allowedOrigins).concat(process.env.NODE_ENV !== 'production' ? devOrigins : []),
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
     }
   }
 }));
 
-// CORS — strict origin check in production, permissive in dev
+// CORS — strict origin check
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || process.env.NODE_ENV !== 'production' || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS: origin '${origin}' not allowed`));
+    // Allow non-browser requests
+    if (!origin) return callback(null, true);
+    
+    // Allow if explicitly in allowedOrigins
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    
+    // Allow localhost ONLY if NOT in production
+    if (process.env.NODE_ENV !== 'production' && devOrigins.includes(origin)) {
+      return callback(null, true);
     }
+    
+    callback(new Error(`CORS: origin '${origin}' not allowed`));
   },
   credentials: true
 }));
@@ -53,7 +63,7 @@ app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 // Global rate limiter
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 150 : 500,
+  max: process.env.NODE_ENV === 'production' ? 150 : 1000, // Increased for dev
   message: { message: 'Too many requests, try again later.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -63,7 +73,7 @@ app.use(globalLimiter);
 // Auth route strict rate limiter
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: process.env.NODE_ENV === 'production' ? 10 : 100, // Increased for dev
   message: { message: 'Too many auth attempts. Try again in 15 minutes.' }
 });
 app.use('/api/auth', authLimiter);

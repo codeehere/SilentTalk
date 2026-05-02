@@ -250,6 +250,11 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
   const [matchIndices, setMatchIndices] = useState([]);
   const [showDeleteModal, setShowDeleteModal] = useState(null);
   const [showLockModal, setShowLockModal] = useState(null);
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [lockPin, setLockPin] = useState('');
   const [lockError, setLockError] = useState('');
 
@@ -292,6 +297,8 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
     setMessages([]);
     setShowSearch(false);
     setSearchQuery('');
+    setCurrentPage(1);
+    setHasMoreMessages(false);
     const initConv = async () => {
       setLoadingMsgs(true);
       try {
@@ -302,10 +309,11 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
             setContactPK(publicKey);
           }
         }
-        const msgRes = await authFetch(`${API}/api/messages/${isGroup ? 'group/' : ''}${contact._id}`);
+        const msgRes = await authFetch(`${API}/api/messages/${isGroup ? 'group/' : ''}${contact._id}?page=1&limit=40`);
         if (msgRes.ok) {
           const data = await msgRes.json();
-          setMessages(data);
+          // If we got exactly 40, there may be more
+          setHasMoreMessages(data.length === 40);
           
           // Mark all fetched unread messages as read locally
           const processed = data.map(m => {
@@ -328,6 +336,23 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
     };
     initConv();
   }, [contact?._id, isGroup]);
+
+  // Load older messages (pagination)
+  const loadOlderMessages = async () => {
+    if (loadingOlder || !hasMoreMessages || !contact) return;
+    setLoadingOlder(true);
+    const nextPage = currentPage + 1;
+    try {
+      const msgRes = await authFetch(`${API}/api/messages/${isGroup ? 'group/' : ''}${contact._id}?page=${nextPage}&limit=40`);
+      if (msgRes.ok) {
+        const older = await msgRes.json();
+        setHasMoreMessages(older.length === 40);
+        setCurrentPage(nextPage);
+        setMessages(prev => [...older, ...prev]);
+      }
+    } catch {}
+    setLoadingOlder(false);
+  };
 
   // Scroll to bottom
   useEffect(() => {
@@ -552,7 +577,7 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
     setMessages(prev => [...prev, optimistic]);
 
     const payloadObj = {
-      text: typeof text === 'object' ? JSON.stringify(text) : (text || ''),
+      text: (ciphertext && !isGroup) ? '' : (typeof text === 'object' ? JSON.stringify(text) : (text || '')),
       ciphertext, nonce,
       [isGroup ? 'groupId' : 'receiverId']: contact._id,
       tempId, mediaUrl: mediaUrl || '', mediaType: mediaType || '', replyTo: replyTo?._id,
@@ -749,8 +774,15 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
     if (['event', 'task', 'contact'].includes(type)) {
       setShowItemPicker(true);
     } else if (['photo', 'video', 'document'].includes(type)) {
-      fileInputRef.current.accept = type === 'photo' ? 'image/*' : type === 'video' ? 'video/*' : '*/*';
-      fileInputRef.current.multiple = true;
+      if (type === 'photo') {
+        fileInputRef.current.accept = 'image/*';
+      } else if (type === 'video') {
+        fileInputRef.current.accept = 'video/*';
+      } else {
+        // Documents: PDF, text, office docs etc.
+        fileInputRef.current.accept = 'application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt';
+      }
+      fileInputRef.current.multiple = type !== 'document';
       fileInputRef.current.click();
     }
   };
@@ -952,7 +984,37 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
           <div style={{ textAlign: 'center', marginTop: 'auto', marginBottom: 'auto', color: 'var(--text-muted)' }}>
             <div style={{ padding: '10px 20px', background: 'var(--bg-elevated)', borderRadius: 20, display: 'inline-block' }}>No messages yet</div>
           </div>
-        ) : messages.map((msg, i) => {
+        ) : (
+        <>
+          {/* Load older messages button */}
+          {hasMoreMessages && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 4px' }}>
+              <button
+                onClick={loadOlderMessages}
+                disabled={loadingOlder}
+                style={{
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 20,
+                  padding: '7px 20px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: 'var(--text-muted)',
+                  cursor: loadingOlder ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  transition: 'all 0.2s'
+                }}
+              >
+                {loadingOlder
+                  ? <><div style={{ width: 12, height: 12, border: '2px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} /> Loading…</>
+                  : '⬆ Load older messages'
+                }
+              </button>
+            </div>
+          )}
+          {messages.map((msg, i) => {
           const mine = isMine(msg);
           const text = getPlainText(msg);
           const isHighlighted = isSearchMatch(msg, i);
@@ -1163,7 +1225,9 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
               </div>
             </div>
           );
-        })}
+          })}
+        </>
+        )}
 
         {/* Typing indicator */}
         {contactTyping && (
