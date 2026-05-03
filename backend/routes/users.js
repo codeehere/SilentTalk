@@ -379,5 +379,15 @@ router.post('/verify-pin', protect, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+// GET /api/users/:id/publicKey — fetch the latest public key
+router.get('/:id/publicKey', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('publicKey');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ publicKey: user.publicKey });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 module.exports = router;

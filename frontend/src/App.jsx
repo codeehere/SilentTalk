@@ -36,13 +36,13 @@ function AppInner() {
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [nicknames, setNicknames] = useState({});
 
-  // Beta modal — show once on first login ever
+  // Beta modal — show every session until user explicitly dismisses this specific version
   const [showBetaModal, setShowBetaModal] = useState(() => {
-    return !localStorage.getItem('st_beta_seen');
+    return localStorage.getItem('st_beta_seen') !== 'v2.6';
   });
 
   const dismissBeta = () => {
-    localStorage.setItem('st_beta_seen', '1');
+    localStorage.setItem('st_beta_seen', 'v2.6');
     setShowBetaModal(false);
   };
 
@@ -435,27 +435,20 @@ function AppInner() {
         />
       )}
 
-      {/* ── Beta Warning Modal (first login only) ───────────────────────── */}
+      {/* ── Beta Warning Modal ───────────────────────────────────────────── */}
       {showBetaModal && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 99999,
-          background: 'rgba(0,0,0,0.82)',
+          background: 'rgba(0,0,0,0.85)',
           backdropFilter: 'blur(18px)',
           WebkitBackdropFilter: 'blur(18px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: '20px',
-          animation: 'fadeIn 0.4s ease'
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          animation: 'fadeIn 0.3s ease'
         }}>
           <style>{`
-            @keyframes betaShieldPop {
-              0%   { transform: scale(0) rotate(-20deg); opacity: 0; }
-              60%  { transform: scale(1.15) rotate(5deg); }
-              80%  { transform: scale(0.95) rotate(-3deg); }
-              100% { transform: scale(1) rotate(0deg); opacity: 1; }
-            }
-            @keyframes betaCardIn {
-              0%   { transform: translateY(50px) scale(0.96); opacity: 0; }
-              100% { transform: translateY(0) scale(1); opacity: 1; }
+            @keyframes betaSlideUp {
+              0%   { transform: translateY(100%); opacity: 0; }
+              100% { transform: translateY(0); opacity: 1; }
             }
             @keyframes betaPulseRing {
               0%   { transform: scale(0.8); opacity: 0; }
@@ -464,115 +457,132 @@ function AppInner() {
             }
             @keyframes betaTagBounce {
               0%, 100% { transform: translateY(0); }
-              50%       { transform: translateY(-4px); }
+              50%       { transform: translateY(-3px); }
             }
           `}</style>
 
           <div style={{
             background: 'linear-gradient(160deg, #1a1d2e 0%, #13161e 100%)',
             border: '1px solid rgba(245,158,11,0.25)',
-            borderRadius: 28,
-            padding: '48px 40px 36px',
-            maxWidth: 460, width: '100%',
-            textAlign: 'center',
-            boxShadow: '0 40px 100px rgba(0,0,0,0.7), 0 0 0 1px rgba(245,158,11,0.1)',
-            animation: 'betaCardIn 0.55s cubic-bezier(0.34,1.56,0.64,1)',
-            position: 'relative',
-            overflow: 'hidden'
+            borderRadius: '24px 24px 0 0',
+            width: '100%', maxWidth: 500,
+            maxHeight: '90dvh',
+            display: 'flex', flexDirection: 'column',
+            boxShadow: '0 -20px 60px rgba(0,0,0,0.6)',
+            animation: 'betaSlideUp 0.45s cubic-bezier(0.34,1.56,0.64,1)',
           }}>
-            {/* Ambient top glow */}
-            <div style={{
-              position: 'absolute', top: -80, left: '50%', transform: 'translateX(-50%)',
-              width: 280, height: 280,
-              background: 'radial-gradient(circle, rgba(245,158,11,0.12) 0%, transparent 70%)',
-              pointerEvents: 'none'
-            }} />
 
-            {/* Pulsing rings */}
-            <div style={{ position: 'relative', width: 96, height: 96, margin: '0 auto 28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {[0.3, 0.6].map((delay, i) => (
-                <div key={i} style={{
-                  position: 'absolute', inset: 0, borderRadius: '50%',
-                  border: '2px solid rgba(245,158,11,0.35)',
-                  animation: `betaPulseRing 2.2s ease-out infinite`,
-                  animationDelay: `${delay}s`
-                }} />
-              ))}
-              {/* Shield icon center */}
-              <div style={{
-                width: 72, height: 72, borderRadius: '50%',
-                background: 'linear-gradient(135deg, rgba(245,158,11,0.2), rgba(245,158,11,0.08))',
-                border: '2px solid rgba(245,158,11,0.4)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 8px 32px rgba(245,158,11,0.3)',
-                animation: 'betaShieldPop 0.7s cubic-bezier(0.34,1.56,0.64,1) 0.15s both'
-              }}>
-                <FiShield size={32} color="#f59e0b" />
-              </div>
+            {/* Drag handle */}
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 0' }}>
+              <div style={{ width: 40, height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.15)' }} />
             </div>
 
-            {/* BETA tag */}
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              background: 'rgba(245,158,11,0.12)', color: '#f59e0b',
-              border: '1px solid rgba(245,158,11,0.3)',
-              borderRadius: 20, padding: '4px 14px', fontSize: 11, fontWeight: 900,
-              letterSpacing: 2, marginBottom: 16, textTransform: 'uppercase',
-              animation: 'betaTagBounce 2s ease-in-out infinite'
-            }}>
-              <FiZap size={11} /> Beta Version
-            </div>
+            {/* Scrollable body */}
+            <div style={{ overflowY: 'auto', padding: '16px 24px 8px', flex: 1 }}>
 
-            <h2 style={{ margin: '0 0 12px', fontSize: 24, fontWeight: 900, color: '#f0f2ff', lineHeight: 1.2 }}>
-              Welcome to SilentTalk
-            </h2>
-            <p style={{ margin: '0 0 28px', fontSize: 14, color: '#9ba3c0', lineHeight: 1.7 }}>
-              This platform is currently in <strong style={{ color: '#fbbf24' }}>public beta</strong> and built for educational exploration of encrypted messaging, e-commerce, and productivity tools.
-            </p>
-
-            {/* Warning cards */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28, textAlign: 'left' }}>
-              {[
-                { icon: FiAlertTriangle, color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)', text: 'Not intended for production or commercial use at this stage.' },
-                { icon: FiShield, color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.2)', text: 'All messages are end-to-end encrypted — the server cannot read your chats.' },
-                { icon: FiZap, color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)', border: 'rgba(139,92,246,0.2)', text: 'Features may change, reset, or be unavailable during beta development.' },
-              ].map(({ icon: Icon, color, bg, border, text }, i) => (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 12,
-                  background: bg, border: `1px solid ${border}`,
-                  borderRadius: 12, padding: '12px 14px'
-                }}>
-                  <Icon size={16} color={color} style={{ marginTop: 1, flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, color: '#9ba3c0', lineHeight: 1.5 }}>{text}</span>
+              {/* Icon + heading row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+                <div style={{ position: 'relative', width: 52, height: 52, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {[0.3, 0.65].map((d, i) => (
+                    <div key={i} style={{
+                      position: 'absolute', inset: 0, borderRadius: '50%',
+                      border: '1.5px solid rgba(245,158,11,0.35)',
+                      animation: 'betaPulseRing 2.2s ease-out infinite',
+                      animationDelay: `${d}s`
+                    }} />
+                  ))}
+                  <div style={{
+                    width: 44, height: 44, borderRadius: '50%',
+                    background: 'rgba(245,158,11,0.15)',
+                    border: '1.5px solid rgba(245,158,11,0.4)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 4px 20px rgba(245,158,11,0.25)'
+                  }}>
+                    <FiShield size={22} color="#f59e0b" />
+                  </div>
                 </div>
-              ))}
+                <div>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    background: 'rgba(245,158,11,0.12)', color: '#f59e0b',
+                    border: '1px solid rgba(245,158,11,0.3)',
+                    borderRadius: 20, padding: '2px 10px', fontSize: 9.5, fontWeight: 900,
+                    letterSpacing: 2, textTransform: 'uppercase', marginBottom: 5,
+                    animation: 'betaTagBounce 2s ease-in-out infinite'
+                  }}>
+                    <FiZap size={9} /> Beta
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: '#f0f2ff', lineHeight: 1.2 }}>
+                    Welcome to SilentTalk
+                  </div>
+                </div>
+              </div>
+
+              {/* Body text */}
+              <p style={{ margin: '0 0 14px', fontSize: 13, color: '#9ba3c0', lineHeight: 1.6 }}>
+                We upgraded our E2EE encryption engine. Some users may have been{' '}
+                <strong style={{ color: '#f472b6' }}>logged out</strong> or see{' '}
+                <strong style={{ color: '#f472b6' }}>[Encrypted message]</strong>.{' '}
+                Simply log back in — your account is safe.
+              </p>
+
+              {/* Compact bullet list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                {[
+                  { icon: FiAlertTriangle, color: '#f59e0b', text: 'Forced logout is due to the new cross-device key sync — log in again to fix.' },
+                  { icon: FiShield, color: '#3b82f6', text: 'Old session messages may stay locked. All new messages decrypt correctly.' },
+                  { icon: FiZap, color: '#8b5cf6', text: 'Developer is not responsible for beta-phase disruptions.' },
+                ].map(({ icon: Icon, color, text }, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    <Icon size={13} color={color} style={{ marginTop: 2, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: '#9ba3c0', lineHeight: 1.5 }}>{text}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Report row */}
+              <div style={{
+                background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)',
+                borderRadius: 10, padding: '9px 12px', marginBottom: 8,
+                display: 'flex', alignItems: 'center', gap: 8
+              }}>
+                <FiAlertTriangle size={12} color="#ef4444" style={{ flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: '#9ba3c0', lineHeight: 1.5 }}>
+                  Suspicious activity? Email{' '}
+                  <a href="mailto:krishnatrishan085@gmail.com" style={{ color: '#f472b6', fontWeight: 700, textDecoration: 'none' }}>
+                    krishnatrishan085@gmail.com
+                  </a>
+                </span>
+              </div>
+
+              <p style={{ margin: '0 0 4px', fontSize: 11, color: '#4a5070', lineHeight: 1.5 }}>
+                Beta platform — do not store sensitive personal or financial information.
+              </p>
             </div>
 
-            {/* Policies blurb */}
-            <p style={{ margin: '0 0 24px', fontSize: 12, color: '#5a6280', lineHeight: 1.6 }}>
-              By continuing you acknowledge this is a <strong style={{ color: '#9ba3c0' }}>demonstration platform</strong>. Do not store sensitive personal, financial, or confidential information.
-            </p>
-
-            <button
-              onClick={dismissBeta}
-              style={{
-                width: '100%', padding: '15px 20px',
-                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                color: '#000', fontWeight: 800, fontSize: 15, letterSpacing: 0.3,
-                borderRadius: 14, cursor: 'pointer',
-                borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderBottom: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                boxShadow: '0 8px 24px rgba(245,158,11,0.4)',
-                transition: 'transform 0.15s, box-shadow 0.15s'
-              }}
-              onMouseEnter={e => { e.currentTarget.style.transform='scale(1.02)'; e.currentTarget.style.boxShadow='0 10px 30px rgba(245,158,11,0.5)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform='scale(1)'; e.currentTarget.style.boxShadow='0 8px 24px rgba(245,158,11,0.4)'; }}
-            >
-              I Understand — Let Me In <FiArrowRight size={17} />
-            </button>
+            {/* Sticky CTA — always visible */}
+            <div style={{ padding: '12px 24px 24px', flexShrink: 0 }}>
+              <button
+                onClick={dismissBeta}
+                style={{
+                  width: '100%', padding: '14px 20px',
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  color: '#000', fontWeight: 800, fontSize: 14, letterSpacing: 0.3,
+                  borderRadius: 14, cursor: 'pointer', border: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  boxShadow: '0 6px 20px rgba(245,158,11,0.4)',
+                  transition: 'opacity 0.15s'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = '0.9'; }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+              >
+                I Understand — Let Me In <FiArrowRight size={16} />
+              </button>
+            </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

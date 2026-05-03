@@ -236,7 +236,7 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
   const [replyTo, setReplyTo] = useState(null);
   const [emojiTarget, setEmojiTarget] = useState(null);
   const [contextPos, setContextPos] = useState({ x: 0, y: 0 });
-  const [contactPK, setContactPK] = useState('');
+  const [contactPK, setContactPK] = useState(contact?.publicKey || '');
 
   // UI state
   const [showProfilePanel, setShowProfilePanel] = useState(false);
@@ -299,6 +299,7 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
     setSearchQuery('');
     setCurrentPage(1);
     setHasMoreMessages(false);
+    setContactPK(contact.publicKey || '');
     const initConv = async () => {
       setLoadingMsgs(true);
       try {

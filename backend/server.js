@@ -186,6 +186,8 @@ io.on('connection', async (socket) => {
     // data: { receiverId, groupId, messageId, ciphertext, nonce, mediaUrl, mediaType, replyTo, tempId }
     if (data.receiverId) {
       io.to(`user:${data.receiverId}`).emit('message:receive', { ...data, senderId: userId });
+      // Emit to sender's other devices!
+      socket.to(`user:${userId}`).emit('message:receive', { ...data, senderId: userId });
     } else if (data.groupId) {
       socket.to(`group:${data.groupId}`).emit('message:receive', { ...data, senderId: userId });
     }
