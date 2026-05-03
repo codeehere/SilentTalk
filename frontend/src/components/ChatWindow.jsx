@@ -6,7 +6,7 @@ import {
   FiUserMinus, FiImage as FiWallpaper, FiChevronUp, FiChevronDown,
   FiStopCircle, FiPlay, FiPause, FiFile, FiCalendar, FiCheckSquare, FiUser, FiShoppingBag,
   FiPackage, FiTruck, FiStar, FiExternalLink, FiAlertCircle, FiClock,
-  FiMapPin, FiLock, FiArchive
+  FiMapPin, FiLock, FiArchive, FiZap
 } from 'react-icons/fi';
 import { BsCheckAll } from 'react-icons/bs';
 import { useAuth } from '../contexts/AuthContext';
@@ -827,170 +827,315 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
 
   if (!contact) {
     return (
-      <div className="chat-window hidden-on-mobile" style={{ position:'relative', overflow:'hidden', background:'#030308' }}>
+      <div className="chat-window hidden-on-mobile" style={{ position:'relative', overflow:'hidden', background:'linear-gradient(to bottom, #130815, #1d0f1b)' }}>
         <style>{`
-          /* ── Aurora blobs: large radial gradients, only transform animated ── */
-          .au-blob {
+          /* Sakura Falling Container */
+          .sakura-container {
+            position: absolute;
+            top: -10%;
+            pointer-events: auto; /* Allow interactions */
+            will-change: transform, opacity;
+            z-index: 1;
+            /* Container handles the absolute fall and rotation */
+          }
+
+          /* The Petal Itself - Handles shape and interaction transforms */
+          .sakura-petal {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #fbcfe8 0%, #f472b6 100%);
+            border-radius: 15px 2px 15px 2px;
+            box-shadow: inset 2px 2px 4px rgba(255,255,255,0.4), 0 0 8px rgba(244, 114, 182, 0.3);
+            transform-style: preserve-3d;
+            transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s ease;
+            will-change: transform;
+            cursor: pointer;
+          }
+
+          /* Falling Animation with 3D Rotation (Absolute Physics) */
+          @keyframes sakura-fall {
+            0% { 
+              transform: translateY(-5vh) translateX(0) rotate3d(1, 1, 0, 0deg); 
+              opacity: 0; 
+            }
+            10% { opacity: var(--max-opacity, 0.6); }
+            80% { opacity: var(--max-opacity, 0.6); }
+            100% { 
+              transform: translateY(105vh) translateX(var(--drift, 15vw)) rotate3d(var(--rx, 1), var(--ry, 1), var(--rz, 0), var(--rot, 720deg)); 
+              opacity: 0; 
+            }
+          }
+          
+          @keyframes sakura-sway {
+            0%, 100% { transform: translateX(0px); }
+            50% { transform: translateX(var(--sway, 45px)); }
+          }
+
+          /* Glow Orbs for calmness */
+          .calm-orb {
             position: absolute;
             border-radius: 50%;
-            will-change: transform, opacity;
+            filter: blur(60px);
+            opacity: 0.4;
+            pointer-events: none;
+            will-change: transform;
+          }
+          
+          @keyframes orb-float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(30px, -40px) scale(1.1); }
           }
 
-          /* 6 blob drift paths — only translate+scale (compositor thread only) */
-          @keyframes au-a {
-            0%,100% { transform: translate(0px,   0px)   scale(1); }
-            33%     { transform: translate(120px,-80px)  scale(1.12); }
-            66%     { transform: translate(-60px, 100px) scale(0.9); }
-          }
-          @keyframes au-b {
-            0%,100% { transform: translate(0px,  0px)   scale(1); }
-            30%     { transform: translate(-140px, 60px) scale(1.18); }
-            65%     { transform: translate(80px,-120px) scale(0.85); }
-          }
-          @keyframes au-c {
-            0%,100% { transform: translate(0px, 0px)    scale(1); }
-            40%     { transform: translate(100px,130px) scale(1.1); }
-            75%     { transform: translate(-80px,-60px) scale(0.92); }
-          }
-          @keyframes au-d {
-            0%,100% { transform: translate(0px,  0px)  scale(1); }
-            25%     { transform: translate(-100px,-90px) scale(1.15); }
-            60%     { transform: translate(60px, 100px) scale(0.88); }
-          }
-          @keyframes au-e {
-            0%,100% { transform: translate(0px,0px)     scale(1); }
-            35%     { transform: translate(80px, 80px)  scale(1.08); }
-            70%     { transform: translate(-120px,40px) scale(0.94); }
-          }
-          @keyframes au-f {
-            0%,100% { transform: translate(0px,   0px) scale(1); }
-            45%     { transform: translate(-70px,-110px) scale(1.2); }
-            80%     { transform: translate(90px,  70px) scale(0.87); }
-          }
-
-          /* Blob opacity breathing */
-          @keyframes au-breathe {
-            0%,100% { opacity: 0.55; }
-            50%     { opacity: 0.85; }
-          }
-          @keyframes au-breathe2 {
-            0%,100% { opacity: 0.45; }
-            50%     { opacity: 0.75; }
-          }
-
-          /* ── Centre card ── */
+          /* Centre card */
           .au-card {
             position: absolute; inset: 0;
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
             gap: 0; pointer-events: none; user-select: none;
+            z-index: 10;
           }
 
-          /* Icon ring pulse */
-          @keyframes au-ring-pulse {
-            0%,100% { transform: scale(1);   opacity: 0.5; }
-            50%     { transform: scale(1.12); opacity: 0.9; }
-          }
-          @keyframes au-ring2 {
-            0%   { transform: scale(1);   opacity: 0.35; }
-            100% { transform: scale(1.9); opacity: 0; }
-          }
-
-          /* Gradient text shimmer (background-position on a wide gradient) */
-          @keyframes au-shimmer {
-            0%   { background-position: 200% center; }
-            100% { background-position: -200% center; }
-          }
-
-          /* Fade in up for card */
           @keyframes au-card-in {
             0%   { transform: translateY(16px); opacity: 0; }
             100% { transform: translateY(0px);  opacity: 1; }
           }
+
+          @keyframes ring-pulse-sakura {
+            0%, 100% { transform: scale(1); opacity: 0.6; }
+            50% { transform: scale(1.12); opacity: 0.9; }
+          }
+
+          @keyframes sakura-shimmer {
+            0%   { background-position: 200% center; }
+            100% { background-position: -200% center; }
+          }
+
+          /* ── Deployment Info Box ── */
+          .deployment-box {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            background: rgba(30, 15, 30, 0.5);
+            border: 1px solid rgba(244, 114, 182, 0.2);
+            border-radius: 12px;
+            padding: 14px 18px;
+            color: #fff;
+            z-index: 20;
+            backdrop-filter: blur(12px);
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            height: 48px;
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            cursor: default;
+          }
+
+          .deployment-box:hover {
+            height: 340px;
+            background: rgba(40, 20, 40, 0.8);
+            border-color: rgba(244, 114, 182, 0.5);
+            box-shadow: 0 12px 48px rgba(244, 114, 182, 0.2);
+          }
+
+          .deploy-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(251, 207, 232, 0.9);
+            height: 20px;
+          }
+
+          .deploy-details {
+            margin-top: 20px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            transition-delay: 0s;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+          }
+
+          .deployment-box:hover .deploy-details {
+            opacity: 1;
+            transition-delay: 0.15s;
+          }
+
+          .deploy-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #f472b6;
+            margin-bottom: 6px;
+          }
+
+          .deploy-text {
+            font-size: 12px;
+            color: rgba(251, 207, 232, 0.7);
+            line-height: 1.6;
+          }
         `}</style>
 
-        {/* ── Aurora blobs ─────────────────────────────────────────── */}
-        {/* [left, top, size, color, anim, dur, delay, breatheAnim, bdur, bdelay] */}
-        {[
-          ['10%', '15%', 420, 'radial-gradient(circle, #7c3aed55 0%, #7c3aed00 70%)', 'au-a', '22s', '0s',   'au-breathe',  '4s', '0s'],
-          ['60%', '5%',  380, 'radial-gradient(circle, #db277755 0%, #db277700 70%)', 'au-b', '28s', '3s',   'au-breathe2', '5s', '1s'],
-          ['80%', '50%', 360, 'radial-gradient(circle, #0891b255 0%, #0891b200 70%)', 'au-c', '25s', '6s',   'au-breathe',  '6s', '2s'],
-          ['5%',  '60%', 400, 'radial-gradient(circle, #4f46e555 0%, #4f46e500 70%)', 'au-d', '30s', '9s',   'au-breathe2', '4.5s','0.5s'],
-          ['40%', '75%', 340, 'radial-gradient(circle, #f43f5e44 0%, #f43f5e00 70%)', 'au-e', '20s', '4s',   'au-breathe',  '3.5s','1.5s'],
-          ['55%', '35%', 300, 'radial-gradient(circle, #8b5cf644 0%, #8b5cf600 70%)', 'au-f', '26s', '11s',  'au-breathe2', '5.5s','0.8s'],
-        ].map(([left, top, size, bg, anim, dur, delay, breathe, bdur, bdelay], i) => (
-          <div key={i} className="au-blob" style={{
-            left, top,
-            width: size, height: size,
-            marginLeft: -size/2, marginTop: -size/2,
-            background: bg,
-            animation: `${anim} ${dur} ease-in-out infinite ${delay}, ${breathe} ${bdur} ease-in-out infinite ${bdelay}`,
-          }} />
-        ))}
+        {/* ── Background Glow Orbs ─────────────────────────────────── */}
+        <div className="calm-orb" style={{ top: '20%', left: '15%', width: 300, height: 300, background: '#f472b6', animation: 'orb-float 15s ease-in-out infinite' }} />
+        <div className="calm-orb" style={{ bottom: '15%', right: '10%', width: 400, height: 400, background: '#a78bfa', animation: 'orb-float 20s ease-in-out infinite reverse' }} />
+
+        {/* ── Sakura Petals (Leaves) ──────────────────────────────── */}
+        {[...Array(35)].map((_, i) => {
+          const left = Math.random() * 100;
+          const size = Math.random() * 6 + 4; // 4px to 10px (smaller leaves)
+          const dur = Math.random() * 8 + 8; // 8s to 16s fall
+          const delay = Math.random() * 15; // stagger starts
+          const swayDur = Math.random() * 3 + 3; // 3s to 6s sway
+          const swayDelay = Math.random() * 2;
+          
+          // Absolute Physics Properties
+          const drift = Math.random() > 0.5 ? `${Math.random() * 25}vw` : `-${Math.random() * 25}vw`;
+          const sway = Math.random() > 0.5 ? `${Math.random() * 60 + 20}px` : `-${Math.random() * 60 + 20}px`;
+          const rot = `${Math.random() * 1080 + 360}deg`;
+          const rx = Math.random() * 1.5;
+          const ry = Math.random() * 1.5;
+          const rz = Math.random() * 0.5;
+          const maxOpacity = Math.random() * 0.35 + 0.25; // 0.25 to 0.6 transparency
+          
+          return (
+            <div 
+              key={i} 
+              className="sakura-container" 
+              style={{
+                left: `${left}%`,
+                width: size,
+                height: size,
+                '--drift': drift,
+                '--rot': rot,
+                '--rx': rx,
+                '--ry': ry,
+                '--rz': rz,
+                '--max-opacity': maxOpacity,
+                animation: `sakura-fall ${dur}s linear infinite ${delay}s`
+              }} 
+            >
+              <div 
+                className="sakura-petal"
+                style={{
+                  '--sway': sway,
+                  animation: `sakura-sway ${swayDur}s ease-in-out infinite alternate ${swayDelay}s`
+                }}
+                onMouseEnter={(e) => {
+                  const el = e.currentTarget;
+                  // Calculate dynamic flutter based on random wind physics
+                  const randomX = (Math.random() - 0.5) * 120; // Blown away horizontally
+                  const randomY = -Math.random() * 60 - 30; // Float upwards
+                  const randomRot = Math.random() * 360 + 180; // Wild spin
+                  
+                  el.style.transform = `translate3d(${randomX}px, ${randomY}px, 40px) rotate3d(1, 1, 1, ${randomRot}deg) scale(1.6)`;
+                  el.style.opacity = '1';
+                  
+                  // Fall back into place naturally
+                  setTimeout(() => {
+                    if (el) {
+                      el.style.transform = 'translate3d(0, 0, 0) rotate3d(0, 0, 0, 0deg) scale(1)';
+                      el.style.opacity = 'inherit';
+                    }
+                  }, 700);
+                }}
+              />
+            </div>
+          );
+        })}
 
         {/* ── Centre card ──────────────────────────────────────────── */}
         <div className="au-card">
-          {/* Pulsing icon rings */}
           <div style={{ position:'relative', width:80, height:80, marginBottom:28, animation:'au-card-in .8s ease both' }}>
-            {/* Expanding ring */}
-            <div style={{
-              position:'absolute', inset:-16, borderRadius:'50%',
-              border:'1.5px solid rgba(139,92,246,.5)',
-              animation:'au-ring2 2.4s ease-out infinite',
-            }} />
-            <div style={{
-              position:'absolute', inset:-8, borderRadius:'50%',
-              border:'1.5px solid rgba(139,92,246,.4)',
-              animation:'au-ring2 2.4s ease-out infinite .7s',
-            }} />
-            {/* Icon circle */}
             <div style={{
               width:80, height:80, borderRadius:'50%',
-              background:'linear-gradient(135deg, rgba(124,58,237,.3) 0%, rgba(219,39,119,.2) 100%)',
-              border:'1.5px solid rgba(139,92,246,.6)',
+              background:'linear-gradient(135deg, rgba(244,114,182,0.15) 0%, rgba(167,139,250,0.15) 100%)',
+              border:'1.5px solid rgba(244,114,182,0.4)',
               display:'flex', alignItems:'center', justifyContent:'center',
-              boxShadow:'0 0 40px rgba(124,58,237,.35), 0 0 80px rgba(124,58,237,.15)',
-              animation:'au-ring-pulse 3s ease-in-out infinite',
+              boxShadow:'0 0 30px rgba(244,114,182,0.2)',
+              animation:'ring-pulse-sakura 4s ease-in-out infinite',
+              backdropFilter: 'blur(8px)'
             }}>
-              {/* Lock SVG — inline, no import needed */}
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="rgba(196,181,253,.9)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              {/* Lock Icon */}
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(244,114,182,0.9)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="11" width="18" height="11" rx="2"/>
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
               </svg>
             </div>
           </div>
 
-          {/* App name with shimmer gradient */}
           <div style={{
             fontSize:28, fontWeight:800, letterSpacing:1,
-            background:'linear-gradient(90deg, #a78bfa, #ec4899, #60a5fa, #a78bfa)',
+            background:'linear-gradient(90deg, #fbcfe8, #f472b6, #c084fc, #fbcfe8)',
             backgroundSize:'300% 100%',
             WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
             backgroundClip:'text',
-            animation:'au-shimmer 5s linear infinite, au-card-in .9s ease .1s both',
+            animation:'sakura-shimmer 6s linear infinite, au-card-in .9s ease .1s both',
             marginBottom:8,
           }}>SilentTalk</div>
 
-          {/* Tagline */}
           <div style={{
-            fontSize:13, color:'rgba(196,181,253,.55)', letterSpacing:1,
+            fontSize:13, letterSpacing:1,
             animation:'au-card-in 1s ease .2s both',
             marginBottom:6,
-          }}>Select a conversation to begin</div>
+            color: 'rgba(251, 207, 232, 0.7)'
+          }}>A space for calm connection</div>
 
-          {/* E2E pill */}
           <div style={{
             display:'inline-flex', alignItems:'center', gap:6,
             padding:'5px 14px', borderRadius:20, marginTop:4,
-            background:'rgba(139,92,246,.1)', border:'1px solid rgba(139,92,246,.25)',
+            background:'rgba(244,114,182,0.08)', border:'1px solid rgba(244,114,182,0.2)',
             animation:'au-card-in 1s ease .35s both',
           }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="rgba(167,139,250,.8)" stroke="none">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="rgba(244,114,182,0.8)" stroke="none">
               <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
             </svg>
-            <span style={{ fontSize:11, color:'rgba(167,139,250,.7)', letterSpacing:1.5, fontWeight:600, textTransform:'uppercase' }}>
+            <span style={{ fontSize:11, color:'rgba(244,114,182,0.8)', letterSpacing:1.5, fontWeight:600, textTransform:'uppercase' }}>
               End-to-end encrypted
             </span>
+          </div>
+        </div>
+
+        {/* ── Deployment Info Box ──────────────────────────────────── */}
+        <div className="deployment-box">
+          <div className="deploy-header">
+            <FiZap size={15} color="#f472b6" />
+            <span>v2.5 Deployed May 3, 2026</span>
+          </div>
+          <div className="deploy-details">
+            <div className="deploy-section">
+              <div className="deploy-title" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <FiStar size={12} /> Newly Added
+              </div>
+              <div className="deploy-text">
+                • Unlimited Group Calling via Jitsi<br/>
+                • Interactive Sakura Physics Animation<br/>
+                • Real-time Chat List Sorting & Previews
+              </div>
+            </div>
+            <div className="deploy-section">
+              <div className="deploy-title" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <FiClock size={12} /> Previous
+              </div>
+              <div className="deploy-text">
+                • E-Commerce Storefront & Real-time Orders<br/>
+                • Secure Media Sharing with Previews<br/>
+                • Offline Message Sync Support
+              </div>
+            </div>
+            <div className="deploy-section">
+              <div className="deploy-title" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <FiSend size={12} /> Upcoming
+              </div>
+              <div className="deploy-text">
+                • AI Message Summaries & Context<br/>
+                • Cross-Device Read Receipts Sync
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1129,6 +1274,16 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
       <div
         className="messages-area"
         onClick={() => { setEmojiTarget(null); setShowMoreMenu(false); }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          let left = e.clientX;
+          let top = e.clientY;
+          // Ensure menu stays within viewport (approx 220px width, 380px height)
+          if (left > window.innerWidth - 220) left -= 220;
+          if (top > window.innerHeight - 380) top -= 380;
+          setMoreMenuPos({ top, left });
+          setShowMoreMenu(true);
+        }}
         style={chatWallpaper ? {
           backgroundImage: chatWallpaper.startsWith('http') ? `url(${chatWallpaper})` : chatWallpaper,
           backgroundSize: 'cover',
@@ -1653,9 +1808,15 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
       {showMoreMenu && createPortal(
         <div 
           className="more-menu portal-menu" 
-          style={{ top: moreMenuPos.top, left: moreMenuPos.left, opacity: 1, zIndex: 10000, position: 'fixed' }}
+          style={{ top: moreMenuPos.top, left: moreMenuPos.left, width: 200, opacity: 1, zIndex: 10000, position: 'fixed' }}
           onClick={e => e.stopPropagation()}
         >
+          <button className="more-menu-item" onClick={() => { setShowMoreMenu(false); onStartCall?.(null, 'close'); }}>
+            <FiX size={15} /> Close Chat
+          </button>
+          
+          <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+
           <button className="more-menu-item" onClick={() => { setShowWallpaperPicker(true); setShowMoreMenu(false); }}>
             <FiWallpaper size={15} /> Set Wallpaper
           </button>
