@@ -135,7 +135,7 @@ router.post('/login', [
 
 // ── POST /api/auth/refresh ────────────────────────────────────────────────────
 router.post('/refresh', async (req, res) => {
-  const { refreshToken } = req.body;
+  const { refreshToken, sessionId } = req.body;
   if (!refreshToken) return res.status(401).json({ message: 'No refresh token' });
 
   try {
@@ -150,12 +150,11 @@ router.post('/refresh', async (req, res) => {
     const newRefresh = generateRefreshToken(user._id);
     user.refreshToken = newRefresh;
     
-    // Update the specific session token
-    let currentSessionId = null;
-    if (user.sessions) {
-      const activeSession = user.sessions.find(s => s.token === refreshToken);
+    // Update session lastActive using sessionId (no token matching needed)
+    let currentSessionId = sessionId || null;
+    if (sessionId && user.sessions) {
+      const activeSession = user.sessions.id(sessionId);
       if (activeSession) {
-        activeSession.token = newRefresh;
         activeSession.lastActive = new Date();
         currentSessionId = activeSession._id;
       }

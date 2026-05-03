@@ -173,7 +173,7 @@ export function AuthProvider({ children }) {
       refreshPromiseRef.current = fetch(`${API}/api/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: refresh })
+        body: JSON.stringify({ refreshToken: refresh, sessionId: localStorage.getItem('st_session_id') || undefined })
       })
         .then(async (rRes) => {
           if (rRes.ok) {

@@ -555,6 +555,39 @@ function AppInner() {
                 </span>
               </div>
 
+              {/* Next Update Date - Glowing Box */}
+              <style>{`
+                @keyframes currentFlow {
+                  0%   { background-position: 0% 50%; }
+                  50%  { background-position: 100% 50%; }
+                  100% { background-position: 0% 50%; }
+                }
+              `}</style>
+              <div style={{
+                position: 'relative',
+                padding: '1px',
+                borderRadius: 12,
+                background: 'linear-gradient(90deg, #f59e0b, #facc15, #f59e0b)',
+                backgroundSize: '200% 100%',
+                animation: 'currentFlow 3s linear infinite',
+                boxShadow: '0 0 15px rgba(245,158,11,0.2)',
+                marginBottom: 16
+              }}>
+                <div style={{
+                  background: '#13161e',
+                  borderRadius: 11,
+                  padding: '8px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b', boxShadow: '0 0 8px #f59e0b' }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#f0f2ff', letterSpacing: 0.5 }}>
+                    NEXT STABLE UPDATE: <span style={{ color: '#f59e0b' }}>MAY 12, 2026</span>
+                  </span>
+                </div>
+              </div>
+
               <p style={{ margin: '0 0 4px', fontSize: 11, color: '#4a5070', lineHeight: 1.5 }}>
                 Beta platform — do not store sensitive personal or financial information.
               </p>
