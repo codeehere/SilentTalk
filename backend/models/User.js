@@ -31,9 +31,17 @@ const userSchema = new mongoose.Schema({
   // otpAttempts:   { type: Number, default: 0, select: false },
   // otpLockedUntil:{ type: Date,   select: false },
 
-  // Hashed refresh token for rotation
-  refreshToken: { type: String, select: false },
-
+  // Active sessions tracking
+  sessions: [{
+    token: { type: String }, // Hashed refresh token
+    ipAddress: { type: String, default: 'Unknown IP' },
+    os: { type: String, default: 'Unknown OS' },
+    browser: { type: String, default: 'Unknown Browser' },
+    location: { type: String, default: 'Unknown Location' },
+    isPrimary: { type: Boolean, default: false },
+    lastActive: { type: Date, default: Date.now },
+    createdAt: { type: Date, default: Date.now }
+  }],
   isOnline: { type: Boolean, default: false },
   lastSeen: { type: Date, default: Date.now },
   contacts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
@@ -77,6 +85,18 @@ userSchema.pre('save', async function () {
   }
   if (this.isModified('privacyPin') && this.privacyPin) {
     this.privacyPin = await bcrypt.hash(this.privacyPin, 10);
+  }
+  
+  // Hash any new session tokens
+  if (this.sessions && this.sessions.length > 0) {
+    for (let i = 0; i < this.sessions.length; i++) {
+      if (this.isModified(`sessions.${i}.token`) && this.sessions[i].token) {
+        // Only hash if it's not already a bcrypt hash (starts with $2)
+        if (!this.sessions[i].token.startsWith('$2')) {
+          this.sessions[i].token = await bcrypt.hash(this.sessions[i].token, 10);
+        }
+      }
+    }
   }
 });
 

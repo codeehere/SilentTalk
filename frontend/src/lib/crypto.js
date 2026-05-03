@@ -5,6 +5,21 @@ import { encodeBase64, decodeBase64, encodeUTF8 as bytesToUtf8, decodeUTF8 as ut
 
 const KEYPAIR_KEY = 'st_keypair';
 
+/** Derive a persistent deterministic NaCl keypair for this user based on their login credentials */
+export async function deriveKeypairFromCredentials(email, password) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(email.toLowerCase() + ':' + password);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  const secretKey = new Uint8Array(hash);
+  const kp = nacl.box.keyPair.fromSecretKey(secretKey);
+  
+  localStorage.setItem(KEYPAIR_KEY, JSON.stringify({
+    publicKey: encodeBase64(kp.publicKey),
+    secretKey: encodeBase64(kp.secretKey)
+  }));
+  return kp;
+}
+
 /** Generate or retrieve a persistent NaCl keypair for this user */
 export function getOrCreateKeypair() {
   const stored = localStorage.getItem(KEYPAIR_KEY);

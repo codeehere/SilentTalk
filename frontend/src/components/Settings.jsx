@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FiUser, FiShield, FiKey, FiCamera, FiImage, FiCalendar, FiCheckSquare, FiShare2, FiChevronLeft, FiBriefcase, FiShoppingBag } from 'react-icons/fi';
+import { FiUser, FiShield, FiKey, FiCamera, FiImage, FiCalendar, FiCheckSquare, FiShare2, FiChevronLeft, FiBriefcase, FiShoppingBag, FiMonitor, FiSmartphone, FiLogOut } from 'react-icons/fi';
 import { MdPalette } from 'react-icons/md';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -29,6 +29,43 @@ export default function Settings({ wallpapers = {}, onWallpaperChange, onViewCha
   const [avatarCropSrc, setAvatarCropSrc] = useState(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  // Device Sessions state
+  const [sessions, setSessions] = useState([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchSessions = async () => {
+      try {
+        const res = await authFetch(`${API}/api/auth/sessions`);
+        if (res.ok) {
+          const data = await res.json();
+          if (mounted) setSessions(data.sessions || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch sessions:', err);
+      } finally {
+        if (mounted) setLoadingSessions(false);
+      }
+    };
+    fetchSessions();
+    return () => { mounted = false; };
+  }, [API, authFetch]);
+
+  const handleLogoutDevice = async (sessionId) => {
+    try {
+      const res = await authFetch(`${API}/api/auth/sessions/${sessionId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setSessions(prev => prev.filter(s => s.id !== sessionId));
+      } else {
+        const data = await res.json();
+        alert(data.message || 'Failed to logout device');
+      }
+    } catch (err) {
+      alert('Error logging out device');
+    }
+  };
 
   // Business fields
   const [isBusiness, setIsBusiness] = useState(user?.isBusiness || false);
@@ -581,6 +618,53 @@ export default function Settings({ wallpapers = {}, onWallpaperChange, onViewCha
             <div style={{ fontFamily: 'monospace', fontSize: 10, color: 'var(--text-muted)', wordBreak: 'break-all', background: 'var(--bg-surface)', padding: '8px 10px', borderRadius: 6 }}>
               Public Key: {exportPublicKey().slice(0, 32)}...
             </div>
+          </div>
+
+          <div style={{ marginTop: 24, marginBottom: 12, fontWeight: 700, fontSize: 15 }}>
+            Accounts & Login
+          </div>
+          <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-muted)' }}>Where you're logged in</div>
+            </div>
+            {loadingSessions ? (
+              <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Loading sessions...</div>
+            ) : sessions.map((s, i) => {
+              const isCurrent = s.id === localStorage.getItem('st_session_id');
+              return (
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', borderBottom: i < sessions.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {s.os.includes('iOS') || s.os.includes('Android') ? <FiSmartphone size={18} color="var(--text-primary)" /> : <FiMonitor size={18} color="var(--text-primary)" />}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      {s.os} · {s.browser}
+                      {isCurrent && <span style={{ fontSize: 10, background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', padding: '2px 6px', borderRadius: 10, fontWeight: 700 }}>Current</span>}
+                      {s.isPrimary && <span style={{ fontSize: 10, background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7', padding: '2px 6px', borderRadius: 10, fontWeight: 700 }}>Primary Device</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                      {s.location} · IP: {s.ipAddress}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                      Active: {new Date(s.lastActive).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+                {!isCurrent && (
+                  <button 
+                    className="icon-btn" 
+                    title={s.isPrimary ? "Cannot log out the primary device" : "Log out device"} 
+                    onClick={() => handleLogoutDevice(s.id)}
+                    disabled={s.isPrimary}
+                    style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)', borderRadius: '8px', padding: '6px 12px', width: 'auto', height: 'auto', fontSize: 12, fontWeight: 600, opacity: s.isPrimary ? 0.4 : 1, cursor: s.isPrimary ? 'not-allowed' : 'pointer' }}
+                  >
+                    Log Out
+                  </button>
+                )}
+              </div>
+              );
+            })}
           </div>
         </div>
 

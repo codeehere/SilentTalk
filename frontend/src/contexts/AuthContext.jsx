@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { exportPublicKey } from '../lib/crypto';
+import { exportPublicKey, deriveKeypairFromCredentials } from '../lib/crypto';
 
 const API = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000`;
 
@@ -67,24 +67,24 @@ export function AuthProvider({ children }) {
 
     localStorage.setItem('st_token',   data.token);
     localStorage.setItem('st_refresh', data.refreshToken || '');
+    localStorage.setItem('st_session_id', data.sessionId || '');
     localStorage.setItem('st_user',    JSON.stringify(data));
     setUser(data);
 
     // Register E2EE public key — fire-and-forget, user is already logged in
-    if (!data.publicKey) {
-      try {
-        const publicKey = exportPublicKey();
-        if (publicKey) {
-          await fetch(`${API}/api/auth/me`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.token}` },
-            body: JSON.stringify({ publicKey })
-          });
-        }
-      } catch (keyErr) {
-        // Non-fatal — E2EE key can be registered later
-        console.warn('[register] Could not register public key:', keyErr.message);
+    try {
+      await deriveKeypairFromCredentials(email, password);
+      const publicKey = exportPublicKey();
+      if (publicKey) {
+        await fetch(`${API}/api/auth/me`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.token}` },
+          body: JSON.stringify({ publicKey })
+        });
       }
+    } catch (keyErr) {
+      // Non-fatal — E2EE key can be registered later
+      console.warn('[register] Could not register public key:', keyErr.message);
     }
     return data;
   };
@@ -101,8 +101,31 @@ export function AuthProvider({ children }) {
 
     localStorage.setItem('st_token',   data.token);
     localStorage.setItem('st_refresh', data.refreshToken || '');
+    localStorage.setItem('st_session_id', data.sessionId || '');
     localStorage.setItem('st_user',    JSON.stringify(data));
     setUser(data);
+
+    // Derive deterministic keypair so it matches across all devices
+    try {
+      await deriveKeypairFromCredentials(email, password);
+      const publicKey = exportPublicKey();
+      
+      // Always update public key on login to ensure the server knows our derived key!
+      if (publicKey && publicKey !== data.publicKey) {
+        await fetch(`${API}/api/auth/me`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.token}` },
+          body: JSON.stringify({ publicKey })
+        });
+        
+        // Update local user data too
+        setUser(prev => ({ ...prev, publicKey }));
+        localStorage.setItem('st_user', JSON.stringify({ ...data, publicKey }));
+      }
+    } catch (err) {
+      console.warn('[login] Could not setup cross-device E2EE key:', err);
+    }
+    
     return data;
   };
 
@@ -157,6 +180,7 @@ export function AuthProvider({ children }) {
             const rData = await rRes.json();
             localStorage.setItem('st_token',   rData.token);
             localStorage.setItem('st_refresh', rData.refreshToken || refresh);
+            if (rData.sessionId) localStorage.setItem('st_session_id', rData.sessionId);
             return rData.token;
           }
           return null;

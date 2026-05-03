@@ -978,6 +978,55 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
             color: rgba(251, 207, 232, 0.7);
             line-height: 1.6;
           }
+
+          /* ── Next Update Glowing Box ── */
+          .next-update-wrap {
+            position: absolute;
+            bottom: 24px;
+            right: 340px;
+            width: 150px;
+            height: 48px;
+            border-radius: 12px;
+            background: rgba(30, 15, 30, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            cursor: default;
+          }
+          
+          .next-update-wrap::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: conic-gradient(transparent, transparent, transparent, #00e5ff, #a78bfa, transparent);
+            animation: border-flow 3s linear infinite;
+          }
+
+          .next-update-inner {
+            position: absolute;
+            inset: 1.5px;
+            background: rgba(30, 15, 30, 0.95);
+            border-radius: 10.5px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            z-index: 1;
+            padding: 0 16px;
+            width: calc(100% - 3px);
+            height: calc(100% - 3px);
+            box-sizing: border-box;
+          }
+
+          @keyframes border-flow {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
         `}</style>
 
         {/* ── Background Glow Orbs ─────────────────────────────────── */}
@@ -1112,9 +1161,9 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
                 <FiStar size={12} /> Newly Added
               </div>
               <div className="deploy-text">
-                • Unlimited Group Calling via Jitsi<br/>
-                • Interactive Sakura Physics Animation<br/>
-                • Real-time Chat List Sorting & Previews
+                • Cross-Device E2EE Sync & Multi-Login<br/>
+                • Live Session IP & Location Tracking<br/>
+                • Primary Account Creator Protection
               </div>
             </div>
             <div className="deploy-section">
@@ -1122,9 +1171,9 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
                 <FiClock size={12} /> Previous
               </div>
               <div className="deploy-text">
-                • E-Commerce Storefront & Real-time Orders<br/>
-                • Secure Media Sharing with Previews<br/>
-                • Offline Message Sync Support
+                • Unlimited Group Calling via Jitsi<br/>
+                • Interactive Sakura Physics Animation<br/>
+                • E-Commerce Store & Media Previews
               </div>
             </div>
             <div className="deploy-section">
@@ -1133,9 +1182,19 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
               </div>
               <div className="deploy-text">
                 • AI Message Summaries & Context<br/>
-                • Cross-Device Read Receipts Sync
+                • Offline Message Sync Support
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* ── Next Update Glowing Box ──────────────────────────────── */}
+        <div className="next-update-wrap">
+          <div className="next-update-inner">
+             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+               <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8 }}>Next Update</div>
+               <div style={{ fontSize: 13, color: '#00e5ff', fontWeight: 800, textShadow: '0 0 10px rgba(0,229,255,0.5)' }}>Late May 2026</div>
+             </div>
           </div>
         </div>
       </div>
