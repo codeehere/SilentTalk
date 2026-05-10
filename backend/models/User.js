@@ -23,7 +23,9 @@ const userSchema = new mongoose.Schema({
   publicKey: { type: String, default: '' },
 
   // ── Password auth (active) ─────────────────────────────────────────────
-  password: { type: String, select: false },
+  password:     { type: String, select: false },
+  // Hashed refresh token — persisted so /api/auth/refresh can verify it
+  refreshToken: { type: String, select: false },
 
   // ── OTP auth (commented out — will be re-enabled once SMTP is configured)
   // otp:           { type: String, select: false },

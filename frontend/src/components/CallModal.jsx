@@ -259,7 +259,7 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
   // Active call screen — native WebRTC
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="call-modal" style={{ padding: 0, overflow: 'hidden', background: '#000', borderRadius: '16px', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+    <div className="call-modal" style={{ padding: 0, overflow: 'hidden', background: '#000' }}>
 
       {/* Remote video (full-screen) */}
       {isVideo && (

@@ -1154,27 +1154,27 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
         <div className="deployment-box">
           <div className="deploy-header">
             <FiZap size={15} color="#f472b6" />
-            <span>v2.5 Deployed May 3, 2026</span>
+            <span>v2.7 Deployed May 10, 2026</span>
           </div>
           <div className="deploy-details">
             <div className="deploy-section">
               <div className="deploy-title" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <FiStar size={12} /> Newly Added
+                <FiStar size={12} /> Newly Fixed
               </div>
               <div className="deploy-text">
-                • Cross-Device E2EE Sync & Multi-Login<br/>
-                • Live Session IP & Location Tracking<br/>
-                • Primary Account Creator Protection
+                • Auto-Logout Bug — sessions stay alive<br/>
+                • 5-Min Call Limit — native WebRTC, no cap<br/>
+                • Mic Mute &amp; Camera Toggle in Calls
               </div>
             </div>
             <div className="deploy-section">
               <div className="deploy-title" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <FiClock size={12} /> Previous
+                <FiClock size={12} /> Previous (v2.5)
               </div>
               <div className="deploy-text">
-                • Unlimited Group Calling via Jitsi<br/>
-                • Interactive Sakura Physics Animation<br/>
-                • E-Commerce Store & Media Previews
+                • Cross-Device E2EE Sync &amp; Multi-Login<br/>
+                • Live Session IP &amp; Location Tracking<br/>
+                • Primary Account Creator Protection
               </div>
             </div>
             <div className="deploy-section">
@@ -1193,8 +1193,8 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
         <div className="next-update-wrap">
           <div className="next-update-inner">
              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-               <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8 }}>Next Update</div>
-               <div style={{ fontSize: 13, color: '#00e5ff', fontWeight: 800, textShadow: '0 0 10px rgba(0,229,255,0.5)' }}>Late May 2026</div>
+               <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8 }}>Last Deploy</div>
+               <div style={{ fontSize: 13, color: '#00e5ff', fontWeight: 800, textShadow: '0 0 10px rgba(0,229,255,0.5)' }}>May 10, 2026</div>
              </div>
           </div>
         </div>

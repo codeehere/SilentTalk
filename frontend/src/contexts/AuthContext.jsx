@@ -165,9 +165,8 @@ export function AuthProvider({ children }) {
       }
       return;
     }
-    // Run immediately once (in case the page was refreshed close to expiry)
-    silentRefresh();
-    // Then every 13 minutes
+    // Wait 13 minutes before the first refresh — the token from login is fresh,
+    // calling refresh immediately would fail against the stored hash.
     proactiveRefreshRef.current = setInterval(silentRefresh, 13 * 60 * 1000);
     return () => {
       if (proactiveRefreshRef.current) {
