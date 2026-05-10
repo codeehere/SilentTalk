@@ -45,6 +45,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const refreshPromiseRef = useRef(null);
+  const proactiveRefreshRef = useRef(null);
 
   useEffect(() => {
     const token = localStorage.getItem('st_token');
@@ -129,6 +130,53 @@ export function AuthProvider({ children }) {
     return data;
   };
 
+  // ── Proactive token refresh ─────────────────────────────────────────────────
+  // Silently refreshes the access token every 13 minutes (before the 15-min expiry)
+  // so the user is never auto-logged out during an active session.
+  const silentRefresh = useCallback(async () => {
+    const refresh = localStorage.getItem('st_refresh');
+    const sessionId = localStorage.getItem('st_session_id');
+    if (!refresh) return;
+    try {
+      const rRes = await fetch(`${API}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: refresh, sessionId: sessionId || undefined })
+      });
+      if (rRes.ok) {
+        const rData = await rRes.json();
+        localStorage.setItem('st_token', rData.token);
+        localStorage.setItem('st_refresh', rData.refreshToken || refresh);
+        if (rData.sessionId) localStorage.setItem('st_session_id', rData.sessionId);
+        // Notify SocketContext to reconnect with the new token
+        window.dispatchEvent(new CustomEvent('st:token_refreshed', { detail: { token: rData.token } }));
+      }
+    } catch {
+      // Network blip — will retry in the next interval
+    }
+  }, [API]);
+
+  useEffect(() => {
+    // Only run the proactive refresh when the user is logged in
+    if (!user) {
+      if (proactiveRefreshRef.current) {
+        clearInterval(proactiveRefreshRef.current);
+        proactiveRefreshRef.current = null;
+      }
+      return;
+    }
+    // Run immediately once (in case the page was refreshed close to expiry)
+    silentRefresh();
+    // Then every 13 minutes
+    proactiveRefreshRef.current = setInterval(silentRefresh, 13 * 60 * 1000);
+    return () => {
+      if (proactiveRefreshRef.current) {
+        clearInterval(proactiveRefreshRef.current);
+        proactiveRefreshRef.current = null;
+      }
+    };
+  }, [user, silentRefresh]);
+
   // ── Logout ──────────────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
     const token = localStorage.getItem('st_token');
@@ -140,11 +188,16 @@ export function AuthProvider({ children }) {
         });
       } catch {}
     }
+    if (proactiveRefreshRef.current) {
+      clearInterval(proactiveRefreshRef.current);
+      proactiveRefreshRef.current = null;
+    }
     localStorage.removeItem('st_token');
     localStorage.removeItem('st_refresh');
+    localStorage.removeItem('st_session_id');
     localStorage.removeItem('st_user');
     setUser(null);
-  }, []);
+  }, [API]);
 
   const updateUser = useCallback((updates) => {
     setUser(prev => {
@@ -181,6 +234,8 @@ export function AuthProvider({ children }) {
             localStorage.setItem('st_token',   rData.token);
             localStorage.setItem('st_refresh', rData.refreshToken || refresh);
             if (rData.sessionId) localStorage.setItem('st_session_id', rData.sessionId);
+            // Notify SocketContext to reconnect with the new token
+            window.dispatchEvent(new CustomEvent('st:token_refreshed', { detail: { token: rData.token } }));
             return rData.token;
           }
           return null;

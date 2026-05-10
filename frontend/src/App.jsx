@@ -38,11 +38,11 @@ function AppInner() {
 
   // Beta modal — show every session until user explicitly dismisses this specific version
   const [showBetaModal, setShowBetaModal] = useState(() => {
-    return localStorage.getItem('st_beta_seen') !== 'v2.6';
+    return localStorage.getItem('st_beta_seen') !== 'v2.7';
   });
 
   const dismissBeta = () => {
-    localStorage.setItem('st_beta_seen', 'v2.6');
+    localStorage.setItem('st_beta_seen', 'v2.7');
     setShowBetaModal(false);
   };
 
@@ -520,24 +520,37 @@ function AppInner() {
 
               {/* Body text */}
               <p style={{ margin: '0 0 14px', fontSize: 13, color: '#9ba3c0', lineHeight: 1.6 }}>
-                We upgraded our E2EE encryption engine. Some users may have been{' '}
-                <strong style={{ color: '#f472b6' }}>logged out</strong> or see{' '}
-                <strong style={{ color: '#f472b6' }}>[Encrypted message]</strong>.{' '}
-                Simply log back in — your account is safe.
+                <strong style={{ color: '#f0f2ff' }}>v2.7 — Deployed May 10, 2026.</strong>{' '}
+                Two critical fixes shipped: sessions now stay alive indefinitely and calls no longer cut off at 5 minutes.
               </p>
 
-              {/* Compact bullet list */}
+              {/* What's new — changelog cards */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-                {[
-                  { icon: FiAlertTriangle, color: '#f59e0b', text: 'Forced logout is due to the new cross-device key sync — log in again to fix.' },
-                  { icon: FiShield, color: '#3b82f6', text: 'Old session messages may stay locked. All new messages decrypt correctly.' },
-                  { icon: FiZap, color: '#8b5cf6', text: 'Developer is not responsible for beta-phase disruptions.' },
-                ].map(({ icon: Icon, color, text }, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                    <Icon size={13} color={color} style={{ marginTop: 2, flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, color: '#9ba3c0', lineHeight: 1.5 }}>{text}</span>
+                {/* Fix 1 */}
+                <div style={{ background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+                    <FiShield size={13} color="#3b82f6" style={{ flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#93c5fd' }}>Fixed — Auto Logout</span>
                   </div>
-                ))}
+                  <span style={{ fontSize: 11.5, color: '#9ba3c0', lineHeight: 1.5 }}>
+                    Sessions now refresh silently every 13 minutes. You will no longer be kicked out while using the app.
+                  </span>
+                </div>
+                {/* Fix 2 */}
+                <div style={{ background: 'rgba(139,92,246,0.07)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+                    <FiPhone size={13} color="#a78bfa" style={{ flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#c4b5fd' }}>Fixed — 5-Minute Call Limit</span>
+                  </div>
+                  <span style={{ fontSize: 11.5, color: '#9ba3c0', lineHeight: 1.5 }}>
+                    Calls are now peer-to-peer (native WebRTC) — no third-party server, no time limit. Mic mute &amp; camera toggle included.
+                  </span>
+                </div>
+                {/* Reminder */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, paddingTop: 2 }}>
+                  <FiZap size={13} color="#8b5cf6" style={{ marginTop: 2, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: '#9ba3c0', lineHeight: 1.5 }}>Developer is not responsible for beta-phase disruptions.</span>
+                </div>
               </div>
 
               {/* Report row */}
@@ -555,7 +568,7 @@ function AppInner() {
                 </span>
               </div>
 
-              {/* Next Update Date - Glowing Box */}
+              {/* Last Deployment Date - Glowing Box */}
               <style>{`
                 @keyframes currentFlow {
                   0%   { background-position: 0% 50%; }
@@ -567,10 +580,10 @@ function AppInner() {
                 position: 'relative',
                 padding: '1px',
                 borderRadius: 12,
-                background: 'linear-gradient(90deg, #f59e0b, #facc15, #f59e0b)',
+                background: 'linear-gradient(90deg, #3b82f6, #8b5cf6, #3b82f6)',
                 backgroundSize: '200% 100%',
                 animation: 'currentFlow 3s linear infinite',
-                boxShadow: '0 0 15px rgba(245,158,11,0.2)',
+                boxShadow: '0 0 15px rgba(99,102,241,0.25)',
                 marginBottom: 16
               }}>
                 <div style={{
@@ -581,9 +594,10 @@ function AppInner() {
                   alignItems: 'center',
                   gap: 8
                 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b', boxShadow: '0 0 8px #f59e0b' }} />
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#6366f1', boxShadow: '0 0 8px #6366f1' }} />
                   <span style={{ fontSize: 11, fontWeight: 700, color: '#f0f2ff', letterSpacing: 0.5 }}>
-                    NEXT STABLE UPDATE: <span style={{ color: '#f59e0b' }}>MAY 12, 2026</span>
+                    LAST DEPLOYMENT: <span style={{ color: '#818cf8' }}>MAY 10, 2026</span>
+                    <span style={{ color: '#4a5070', fontWeight: 400, marginLeft: 6 }}>· v2.7</span>
                   </span>
                 </div>
               </div>
