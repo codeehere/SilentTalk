@@ -30,6 +30,7 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
 
   const timerRef        = useRef(null);
   const callRecordIdRef = useRef(null);
+  const callDurationRef = useRef(0);           // Ref copy — never stale inside callbacks
   const pcsRef          = useRef(new Map());   // Map<userId, RTCPeerConnection>
   const pendingIceRef   = useRef(new Map());   // Map<userId, RTCIceCandidate[]>
   const localStreamRef  = useRef(null);
@@ -43,7 +44,10 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
 
   const startTimer = useCallback(() => {
     if (timerRef.current) return;
-    timerRef.current = setInterval(() => setCallDuration(d => d + 1), 1000);
+    timerRef.current = setInterval(() => {
+      callDurationRef.current += 1;            // Keep ref in sync — readable from any callback
+      setCallDuration(d => d + 1);             // Update state for display
+    }, 1000);
   }, []);
 
   const showToast = (msg) => {
@@ -123,6 +127,9 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
     if (endedRef.current) return;
     endedRef.current = true;
     clearInterval(timerRef.current);
+    // Snapshot duration from ref — callDurationRef.current is always current,
+    // unlike the callDuration state which would be stale inside this callback.
+    const duration = callDurationRef.current;
     pcsRef.current.forEach(pc => { try { pc.close(); } catch {} });
     pcsRef.current.clear();
     if (localStreamRef.current) {
@@ -133,7 +140,8 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
       authFetch(`${API}/api/calls/${callRecordIdRef.current}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: finalStatus })
+        // Send duration so the call log shows real time, not 0m 0s
+        body: JSON.stringify({ status: finalStatus, duration })
       }).catch(() => {});
     }
     onEnd();
