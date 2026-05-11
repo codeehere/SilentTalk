@@ -29,7 +29,7 @@ const messageSchema = new mongoose.Schema({
   text: { type: String, default: '' },
   // Optional media
   mediaUrl: { type: String, default: '' },
-  mediaType: { type: String, enum: ['image', 'video', 'audio', 'file', 'event', 'task', 'contact', 'document', 'store', 'order_update', ''], default: '' },
+  mediaType: { type: String, enum: ['image', 'video', 'audio', 'file', 'event', 'task', 'contact', 'document', 'store', 'order_update', 'call_log', ''], default: '' },
   orderData: { type: String, default: '' }, // JSON: { orderId, status, productName, productImg, total, sellerName, saasLink, isDigital }
   // Message metadata
   status: {

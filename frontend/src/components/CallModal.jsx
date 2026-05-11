@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { FiPhoneOff, FiPhone, FiMic, FiMicOff, FiVideo, FiVideoOff } from 'react-icons/fi';
+import { FiPhoneOff, FiPhone, FiMic, FiMicOff, FiVideo, FiVideoOff, FiVolume2, FiVolumeX, FiCircle, FiUserPlus } from 'react-icons/fi';
 import { useSocket } from '../contexts/SocketContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -22,6 +22,7 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
   const [callDuration, setCallDuration] = useState(0);
   const [isMuted, setIsMuted]         = useState(false);
   const [isVideoOff, setIsVideoOff]   = useState(false);
+  const [isSpeaker, setIsSpeaker]     = useState(callType === 'video');
 
   const timerRef        = useRef(null);
   const callRecordIdRef = useRef(null);
@@ -37,7 +38,10 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
   const endedRef        = useRef(false);
 
   const isVideo = callType === 'video';
-  const isGroup = !!contact?.isGroup || !!contact?.members;
+  const isGroup = !!contact?.isGroup || !!contact?.members || !!incomingRoomName;
+  const [jitsiRoomName, setJitsiRoomName] = useState(() => isGroup ? (incomingRoomName || `SilentTalk_Group_${contact?._id}_${Date.now()}`) : null);
+  const [showAddParticipant, setShowAddParticipant] = useState(false);
+  const [contactsList, setContactsList] = useState([]);
 
   const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
@@ -197,16 +201,29 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
     const handleEnd      = () => endCallRef.current?.('completed');
     const handleRejected = () => endCallRef.current?.('rejected');
 
+    const handleMessage = (data) => {
+      if (data.mediaType === 'call_upgrade' && data.mediaUrl) {
+        if (pcRef.current) { try { pcRef.current.close(); } catch {} pcRef.current = null; }
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach(t => t.stop());
+          localStreamRef.current = null;
+        }
+        setJitsiRoomName(data.mediaUrl);
+      }
+    };
+
     on('call:answered', handleAnswered);
     on('call:ice',      handleIce);
     on('call:ended',    handleEnd);
     on('call:rejected', handleRejected);
+    on('message:receive', handleMessage);
 
     return () => {
       off('call:answered', handleAnswered);
       off('call:ice',      handleIce);
       off('call:ended',    handleEnd);
       off('call:rejected', handleRejected);
+      off('message:receive', handleMessage);
     };
   // Empty deps — register once only. endCallLocally accessed via endCallRef.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -215,6 +232,13 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
   // ── Accept incoming call ─────────────────────────────────────────────────────
   const acceptCall = async () => {
     setStatus('connecting');
+    if (isGroup || incomingRoomName) {
+      setJitsiRoomName(incomingRoomName || jitsiRoomName);
+      setStatus('connected');
+      startTimer();
+      return;
+    }
+    
     const stream = await getMedia();
     const pc = createPeerConnection(stream);
 
@@ -252,6 +276,58 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
     if (!localStreamRef.current) return;
     localStreamRef.current.getVideoTracks().forEach(t => { t.enabled = !t.enabled; });
     setIsVideoOff(v => !v);
+  };
+
+  const toggleSpeaker = () => {
+    if (!remoteVideoRef.current) return;
+    const isSupported = 'setSinkId' in HTMLMediaElement.prototype;
+    if (!isSupported) {
+      showUpcomingToast('Speaker routing handled by OS');
+    }
+    setIsSpeaker(s => !s);
+  };
+
+  const showUpcomingToast = (feature) => {
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;top:40px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:10px 20px;border-radius:24px;z-index:999999;font-size:14px;font-weight:600;box-shadow:0 10px 30px rgba(124,106,247,0.4);animation:fadeIn 0.3s ease;';
+    toast.innerText = `✨ ${feature} - Coming Soon!`;
+    document.body.appendChild(toast);
+    setTimeout(() => { if (document.body.contains(toast)) document.body.removeChild(toast); }, 2500);
+  };
+
+  const handleAddParticipantClick = async () => {
+    try {
+      const res = await authFetch(`${API}/api/users/contacts`);
+      if (res.ok) {
+        const data = await res.json();
+        setContactsList(data.contacts || []);
+        setShowAddParticipant(true);
+      }
+    } catch (err) {}
+  };
+
+  const handleInviteParticipant = (contactToInvite) => {
+    const room = jitsiRoomName || `SilentTalk_Group_${Date.now()}`;
+    if (!jitsiRoomName) {
+      // Upgrading from 1-on-1 to group
+      setJitsiRoomName(room);
+      if (pcRef.current) { try { pcRef.current.close(); } catch {} pcRef.current = null; }
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(t => t.stop());
+        localStreamRef.current = null;
+      }
+      emit('message:send', { receiverId: contact._id, mediaType: 'call_upgrade', mediaUrl: room });
+    }
+    // Invite the new participant
+    emit('call:offer', { to: contactToInvite._id, offer: null, callType, roomName: room });
+    setShowAddParticipant(false);
+    
+    // Quick toast
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;top:40px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:10px 20px;border-radius:24px;z-index:999999;font-size:14px;font-weight:600;box-shadow:0 10px 30px rgba(124,106,247,0.4);animation:fadeIn 0.3s ease;';
+    toast.innerText = `Invited ${contactToInvite.username || 'participant'}!`;
+    document.body.appendChild(toast);
+    setTimeout(() => { if (document.body.contains(toast)) document.body.removeChild(toast); }, 2500);
   };
 
   // ── Incoming ring screen ─────────────────────────────────────────────────────
@@ -293,6 +369,41 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
     status === 'calling'    ? 'Calling…'      :
     status === 'connecting' ? 'Connecting…'   :
     status === 'connected'  ? fmt(callDuration) : '…';
+
+  if (jitsiRoomName) {
+    return (
+      <div className="call-modal" style={{ padding: 0, overflow: 'hidden', background: '#000' }}>
+        <iframe
+          allow="camera; microphone; fullscreen; display-capture"
+          src={`https://meet.jit.si/${jitsiRoomName}#config.prejoinPageEnabled=false`}
+          style={{ width: '100%', height: '100%', border: 'none' }}
+        />
+        <div style={{ position: 'absolute', bottom: 20, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 14, zIndex: 100 }}>
+          <button onClick={handleAddParticipantClick} title="Add someone" style={{ width: 50, height: 50, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.2)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)' }}>
+            <FiUserPlus size={20} />
+          </button>
+          <button onClick={endCall} title="End call" style={{ width: 60, height: 60, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 20px rgba(239,68,68,0.5)' }}>
+            <FiPhoneOff size={24} />
+          </button>
+        </div>
+        {/* Add Participant Modal Overlay */}
+        {showAddParticipant && (
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease' }}>
+            <div style={{ background: 'var(--bg-elevated)', padding: 20, borderRadius: 16, width: '90%', maxWidth: 360, maxHeight: '80%', overflowY: 'auto', border: '1px solid var(--border)' }}>
+              <h3 style={{ marginTop: 0, marginBottom: 16, color: 'var(--text-primary)' }}>Add to Call</h3>
+              {contactsList.map(c => (
+                <div key={c._id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => handleInviteParticipant(c)}>
+                  <img src={c.avatar || `https://ui-avatars.com/api/?name=${c.username || c.name || c.email}`} style={{ width: 40, height: 40, borderRadius: '50%' }} />
+                  <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{c.username || c.name || c.email}</div>
+                </div>
+              ))}
+              <button onClick={() => setShowAddParticipant(false)} style={{ marginTop: 16, width: '100%', padding: 12, borderRadius: 8, background: 'var(--border)', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="call-modal" style={{ padding: 0, overflow: 'hidden', background: '#000' }}>
@@ -350,13 +461,30 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
       {/* Controls bar — always visible */}
       <div style={{
         position: 'absolute', bottom: 0, left: 0, right: 0,
-        display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 20,
-        padding: '20px 0 28px',
+        display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+        padding: '20px 10px 28px',
         background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)',
         zIndex: 20
       }}>
+        <button onClick={handleAddParticipantClick} title="Add someone" style={{
+          width: 50, height: 50, borderRadius: '50%', border: 'none', cursor: 'pointer',
+          background: 'rgba(255,255,255,0.18)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(8px)', transition: 'background 0.2s'
+        }}>
+          <FiUserPlus size={20} />
+        </button>
+
+        <button onClick={toggleSpeaker} title={isSpeaker ? 'Speaker on' : 'Speaker off'} style={{
+          width: 50, height: 50, borderRadius: '50%', border: 'none', cursor: 'pointer',
+          background: isSpeaker ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.18)',
+          color: isSpeaker ? '#000' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(8px)', transition: 'background 0.2s'
+        }}>
+          {isSpeaker ? <FiVolume2 size={20} /> : <FiVolumeX size={20} />}
+        </button>
+
         <button onClick={toggleMic} title={isMuted ? 'Unmute' : 'Mute'} style={{
-          width: 52, height: 52, borderRadius: '50%', border: 'none', cursor: 'pointer',
+          width: 50, height: 50, borderRadius: '50%', border: 'none', cursor: 'pointer',
           background: isMuted ? 'rgba(239,68,68,0.9)' : 'rgba(255,255,255,0.18)',
           color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
           backdropFilter: 'blur(8px)', transition: 'background 0.2s'
@@ -366,7 +494,7 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
 
         {isVideo && (
           <button onClick={toggleVideo} title={isVideoOff ? 'Enable camera' : 'Disable camera'} style={{
-            width: 52, height: 52, borderRadius: '50%', border: 'none', cursor: 'pointer',
+            width: 50, height: 50, borderRadius: '50%', border: 'none', cursor: 'pointer',
             background: isVideoOff ? 'rgba(239,68,68,0.9)' : 'rgba(255,255,255,0.18)',
             color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
             backdropFilter: 'blur(8px)', transition: 'background 0.2s'
@@ -374,6 +502,14 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
             {isVideoOff ? <FiVideoOff size={20} /> : <FiVideo size={20} />}
           </button>
         )}
+
+        <button onClick={() => showUpcomingToast('Call Recording')} title="Record" style={{
+          width: 50, height: 50, borderRadius: '50%', border: 'none', cursor: 'pointer',
+          background: 'rgba(255,255,255,0.18)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(8px)', transition: 'background 0.2s'
+        }}>
+          <FiCircle size={20} />
+        </button>
 
         {/* End call — always big and red, easy to tap on mobile */}
         <button onClick={endCall} title="End call" style={{
@@ -387,6 +523,22 @@ export default function CallModal({ contact, callType, onEnd, incoming, incoming
           <FiPhoneOff size={24} />
         </button>
       </div>
+
+      {/* Add Participant Modal Overlay for 1-on-1 */}
+      {showAddParticipant && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease' }}>
+          <div style={{ background: 'var(--bg-elevated)', padding: 20, borderRadius: 16, width: '90%', maxWidth: 360, maxHeight: '80%', overflowY: 'auto', border: '1px solid var(--border)' }}>
+            <h3 style={{ marginTop: 0, marginBottom: 16, color: 'var(--text-primary)' }}>Add to Call</h3>
+            {contactsList.map(c => (
+              <div key={c._id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => handleInviteParticipant(c)}>
+                <img src={c.avatar || `https://ui-avatars.com/api/?name=${c.username || c.name || c.email}`} style={{ width: 40, height: 40, borderRadius: '50%' }} />
+                <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{c.username || c.name || c.email}</div>
+              </div>
+            ))}
+            <button onClick={() => setShowAddParticipant(false)} style={{ marginTop: 16, width: '100%', padding: 12, borderRadius: 8, background: 'var(--border)', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

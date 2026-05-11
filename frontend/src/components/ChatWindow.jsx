@@ -1442,7 +1442,28 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
                           <OrderUpdateCard orderData={msg.orderData} />
                         )}
 
-                        {text && !['event', 'task', 'contact', 'document', 'store', 'order_update'].includes(msg.mediaType) && (
+                        {msg.mediaType === 'call_log' && text && (
+                          (() => {
+                            try {
+                              const log = JSON.parse(text);
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '4px 8px' }}>
+                                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: log.callType === 'video' ? '#3b82f622' : '#22c55e22', color: log.callType === 'video' ? '#3b82f6' : '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    {log.callType === 'video' ? <FiVideo size={20} /> : <FiPhone size={20} />}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: 14, fontWeight: 700 }}>{log.callType === 'video' ? 'Video Call' : 'Audio Call'}</div>
+                                    <div style={{ fontSize: 12, opacity: 0.7 }}>
+                                      {log.status === 'completed' ? `${Math.floor(log.duration / 60)}m ${log.duration % 60}s` : log.status === 'rejected' ? 'Declined' : 'Missed'}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            } catch { return <span>{text}</span>; }
+                          })()
+                        )}
+
+                        {text && !['event', 'task', 'contact', 'document', 'store', 'order_update', 'call_log'].includes(msg.mediaType) && (
                           <span>{showSearch && searchQuery ? highlightText(text, searchQuery) : text}</span>
                         )}
                         {msg.mediaUrl && (
