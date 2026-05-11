@@ -250,6 +250,10 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
   const [matchIndices, setMatchIndices] = useState([]);
   const [showDeleteModal, setShowDeleteModal] = useState(null);
   const [showLockModal, setShowLockModal] = useState(null);
+  // Avatar mini-menu (View Profile Picture / View Story)
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  const [viewFullAvatar, setViewFullAvatar] = useState(false);
+  const [contactHasStory, setContactHasStory] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -284,12 +288,22 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
   const searchInputRef = useRef();
   const messageRefs = useRef({});
   const moreMenuTriggerRef = useRef();
+  const avatarRef = useRef();          // Ref for portal-positioning the avatar menu
   const [moreMenuPos, setMoreMenuPos] = useState({ top: 0, left: 0 });
+  const [avatarMenuPos, setAvatarMenuPos] = useState({ top: 0, left: 0 });
 
   const contactId = contact?._id;
 
   // Determine current wallpaper
   const chatWallpaper = wallpapers?.[contactId] || wallpapers?.['global'] || '';
+
+  // Close avatar menu on outside click
+  useEffect(() => {
+    if (!avatarMenuOpen) return;
+    const close = () => setAvatarMenuOpen(false);
+    setTimeout(() => window.addEventListener('click', close), 0);
+    return () => window.removeEventListener('click', close);
+  }, [avatarMenuOpen]);
 
   // Fetch messages + public key
   useEffect(() => {
@@ -300,6 +314,16 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
     setCurrentPage(1);
     setHasMoreMessages(false);
     setContactPK(contact.publicKey || '');
+    setAvatarMenuOpen(false);
+    setContactHasStory(false);
+    // Check if contact has an active story
+    authFetch(`${API}/api/stories`).then(async r => {
+      if (r.ok) {
+        const stories = await r.json();
+        setContactHasStory(stories.some(s => (s.userId?._id || s.userId)?.toString() === contact._id?.toString()));
+      }
+    }).catch(() => {});
+
     const initConv = async () => {
       setLoadingMsgs(true);
       try {
@@ -1232,24 +1256,58 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
         <button className="icon-btn mobile-only-back" onClick={() => onStartCall?.(null, 'close')}>
           <FiCornerUpLeft size={18} />
         </button>
-        <div
-          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}
-          onClick={() => { setShowProfilePanel(true); setShowMoreMenu(false); }}
-        >
-          {(contact.avatar || contact.avatarUrl)
-            ? <img src={contact.avatar || contact.avatarUrl} alt="" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover' }} />
-            : <AvatarFallback name={contact.name || contact.username} size={38} />
-          }
-          <div className="chat-header-info">
-            <div className="chat-header-name">
-              {nicknames[contact._id] || contact.name || contact.username || contact.email?.split('@')[0]}
-            </div>
-            <div className="chat-header-status" style={{ color: contact.isOnline ? 'var(--green)' : undefined }}>
-              {isGroup ? `${contact.members?.length || 0} members` : (
-                contactTyping
-                  ? <span style={{ color: 'var(--accent)' }}>typing…</span>
-                  : contact.isOnline ? 'Online' : `@${contact.uniqueId}`
-              )}
+        {/* Clickable area: avatar (opens mini-menu) + name/info (opens profile panel) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+          {/* Avatar — separate click → portal menu (avoids overflow:hidden on .chat-header) */}
+          <div
+            ref={avatarRef}
+            style={{ position: 'relative', flexShrink: 0, cursor: 'pointer' }}
+            onClick={e => {
+              e.stopPropagation();
+              if (!avatarMenuOpen) {
+                const r = avatarRef.current?.getBoundingClientRect();
+                if (r) setAvatarMenuPos({ top: r.bottom + 8, left: r.left });
+              }
+              setAvatarMenuOpen(o => !o);
+              setShowMoreMenu(false);
+            }}
+          >
+            {/* Avatar image with story ring via box-shadow */}
+            {(contact.avatar || contact.avatarUrl)
+              ? <img
+                  src={contact.avatar || contact.avatarUrl} alt=""
+                  style={{
+                    width: 38, height: 38, borderRadius: '50%', objectFit: 'cover',
+                    display: 'block',
+                    outline: contactHasStory ? '2.5px solid #22c55e' : '2.5px solid transparent',
+                    outlineOffset: '2px',
+                    boxShadow: contactHasStory ? '0 0 0 4px rgba(34,197,94,0.18)' : 'none',
+                    transition: 'outline 0.2s, box-shadow 0.2s'
+                  }}
+                />
+              : <div style={{
+                  width: 38, height: 38, borderRadius: '50%',
+                  outline: contactHasStory ? '2.5px solid #22c55e' : '2.5px solid transparent',
+                  outlineOffset: '2px'
+                }}>
+                  <AvatarFallback name={contact.name || contact.username} size={38} />
+                </div>
+            }
+          </div>
+
+          {/* Name + status — opens profile panel */}
+          <div style={{ cursor: 'pointer', flex: 1 }} onClick={() => { setShowProfilePanel(true); setShowMoreMenu(false); setAvatarMenuOpen(false); }}>
+            <div className="chat-header-info">
+              <div className="chat-header-name">
+                {nicknames[contact._id] || contact.name || contact.username || contact.email?.split('@')[0]}
+              </div>
+              <div className="chat-header-status" style={{ color: contact.isOnline ? 'var(--green)' : undefined }}>
+                {isGroup ? `${contact.members?.length || 0} members` : (
+                  contactTyping
+                    ? <span style={{ color: 'var(--accent)' }}>typing…</span>
+                    : contact.isOnline ? 'Online' : `@${contact.uniqueId}`
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2010,6 +2068,92 @@ export default function ChatWindow({ contact, isGroup, onStartCall, wallpapers, 
                   }
                 } catch { setLockError('Network error'); }
               }}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Avatar mini-menu (portal — escapes overflow:hidden on .chat-header) ── */}
+      {avatarMenuOpen && createPortal(
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: avatarMenuPos.top,
+            left: avatarMenuPos.left,
+            zIndex: 99998,
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            overflow: 'hidden',
+            minWidth: 200,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            animation: 'fadeIn 0.15s ease'
+          }}
+        >
+          <button
+            onClick={() => { setAvatarMenuOpen(false); setViewFullAvatar(true); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+              padding: '13px 16px', background: 'none', border: 'none',
+              color: 'var(--text)', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              borderBottom: '1px solid var(--border)', textAlign: 'left'
+            }}
+          >
+            <FiUser size={15} color="var(--accent)" /> View Profile Picture
+          </button>
+          <button
+            onClick={() => {
+              setAvatarMenuOpen(false);
+              window.dispatchEvent(new CustomEvent('open-stories-for', { detail: { userId: contact._id } }));
+            }}
+            disabled={!contactHasStory}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+              padding: '13px 16px', background: 'none', border: 'none',
+              color: contactHasStory ? 'var(--text)' : 'var(--text-muted)',
+              cursor: contactHasStory ? 'pointer' : 'default',
+              fontSize: 13, fontWeight: 600, textAlign: 'left'
+            }}
+          >
+            <span style={{
+              width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+              background: contactHasStory ? '#22c55e' : 'var(--border)',
+              display: 'inline-block'
+            }} />
+            {contactHasStory ? 'View Story' : 'No Active Story'}
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {/* ── Fullscreen Profile Picture Viewer ────────────────────────────────── */}
+      {viewFullAvatar && (
+        <div onClick={() => setViewFullAvatar(false)} style={{
+          position:'fixed', inset:0, zIndex:99999,
+          background:'rgba(0,0,0,0.92)', backdropFilter:'blur(16px)',
+          display:'flex', alignItems:'center', justifyContent:'center',
+          animation:'fadeIn 0.2s ease'
+        }}>
+          <button onClick={() => setViewFullAvatar(false)} style={{
+            position:'absolute', top:20, right:20, background:'rgba(255,255,255,0.12)',
+            border:'none', color:'#fff', width:40, height:40, borderRadius:'50%',
+            cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:20, fontWeight:700
+          }}>✕</button>
+          <div style={{ textAlign:'center' }} onClick={e => e.stopPropagation()}>
+            {(contact.avatar || contact.avatarUrl)
+              ? <img src={(contact.avatar || contact.avatarUrl).replace(/\/upload\/(c_fill,[^\/]+\/)?/, '/upload/')} alt=""
+                  style={{ maxWidth:'90vw', maxHeight:'80vh', borderRadius:16,
+                    objectFit:'contain', boxShadow:'0 20px 60px rgba(0,0,0,0.6)' }}/>
+              : <div style={{ width:200, height:200, borderRadius:'50%', background:'var(--accent)',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:72, fontWeight:700, color:'#fff' }}>
+                  {(contact.username||contact.name||'?')[0].toUpperCase()}
+                </div>
+            }
+            <div style={{ marginTop:16, color:'rgba(255,255,255,0.8)', fontSize:15, fontWeight:600 }}>
+              {contact.username || contact.name}
             </div>
           </div>
         </div>

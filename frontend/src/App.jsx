@@ -26,6 +26,7 @@ import './index.css';
 function AppInner() {
   const { user, loading, authFetch, API, updateUser } = useAuth();
   const [activeView, setActiveView] = useState('chats');
+  const [storyTargetId, setStoryTargetId] = useState(null);
   const [activeContact, setActiveContact] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
   const [globalUnread, setGlobalUnread] = useState({});
@@ -268,6 +269,15 @@ function AppInner() {
   }, [activeView, activeContact]);
 
   useEffect(() => {
+    const handleOpenStories = (e) => {
+      setStoryTargetId(e.detail.userId);
+      setActiveView('stories');
+    };
+    window.addEventListener('open-stories-for', handleOpenStories);
+    return () => window.removeEventListener('open-stories-for', handleOpenStories);
+  }, []);
+
+  useEffect(() => {
     const syncDim = () => {
       setDimLevel(parseFloat(localStorage.getItem('st_wallpaper_dim') || '0.4'));
     };
@@ -344,8 +354,8 @@ function AppInner() {
     const goBack = () => setActiveView('chats');
     if (activeView === 'tasks')    return <Tasks onBack={goBack} />;
     if (activeView === 'events')   return <Events onBack={goBack} />;
-    if (activeView === 'stories')  return <Stories onBack={goBack} />;
-    if (activeView === 'store')    return <StoreManager onBack={goBack} />;
+    if (activeView === 'stories')  return <Stories onBack={goBack} initialUserId={storyTargetId} />;
+    if (activeView === 'store')    return <StoreManager onBack={goBack} initialUserId={storeTargetId} />;
     if (activeView === 'myorders') return <BuyerOrders onBack={goBack} />;
 
     const ICONS = {

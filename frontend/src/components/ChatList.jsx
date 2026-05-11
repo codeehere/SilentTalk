@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FiSearch, FiUserPlus, FiX, FiUser, FiMapPin, FiLock, FiArchive, FiTrash2 } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
@@ -51,6 +51,10 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
   const [showLockModal, setShowLockModal] = useState(null);
   const [lockPin, setLockPin] = useState('');
   const [lockError, setLockError] = useState('');
+  // Story owners — contacts who have an active story get a green ring
+  const [storyOwnerIds, setStoryOwnerIds] = useState(new Set());
+  // Long-press ref for mobile context menu
+  const longPressTimer = useRef(null);
 
   useEffect(() => {
     const handleClick = () => setContextMenu({ show: false, x: 0, y: 0, contact: null });
@@ -63,6 +67,21 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
     const handleMetadata = () => fetchContacts();
     window.addEventListener('chat-metadata-updated', handleMetadata);
     return () => window.removeEventListener('chat-metadata-updated', handleMetadata);
+  }, []);
+
+  // Fetch active story owners to show green ring on their avatars
+  useEffect(() => {
+    const fetchStories = async () => {
+      try {
+        const res = await authFetch(`${API}/api/stories`);
+        if (res.ok) {
+          const data = await res.json();
+          const ids = new Set(data.map(s => (s.userId?._id || s.userId)?.toString()));
+          setStoryOwnerIds(ids);
+        }
+      } catch {}
+    };
+    fetchStories();
   }, []);
 
   useEffect(() => {
@@ -394,13 +413,28 @@ export default function ChatList({ activeContactId, onSelectContact, blockedUser
                 }
               }}
               onContextMenu={(e) => {
-                if (activeTab !== 'chats' || isResult) return;
+                if (!['chats', 'archived'].includes(activeTab) || isResult) return;
                 e.preventDefault();
                 setContextMenu({ show: true, x: e.clientX, y: e.clientY, contact });
               }}
+              // Long-press for mobile (touch devices don't fire onContextMenu reliably)
+              onTouchStart={(e) => {
+                if (!['chats', 'archived'].includes(activeTab) || isResult) return;
+                const touch = e.touches[0];
+                longPressTimer.current = setTimeout(() => {
+                  // Vibrate if supported (tactile feedback)
+                  if (navigator.vibrate) navigator.vibrate(40);
+                  setContextMenu({ show: true, x: touch.clientX, y: touch.clientY, contact });
+                }, 600);
+              }}
+              onTouchEnd={() => clearTimeout(longPressTimer.current)}
+              onTouchMove={() => clearTimeout(longPressTimer.current)}
               style={{ cursor: (activeTab === 'requests' && !isResult) || activeTab === 'blocked' ? 'default' : 'pointer' }}
             >
-              <div className="contact-avatar">
+              <div 
+                className="contact-avatar" 
+                title={storyOwnerIds.has(contact._id?.toString()) ? "Story Uploaded" : undefined}
+              >
                 {contact.avatar
                   ? <img src={contact.avatar} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover' }} />
                   : <AvatarFallback name={contact.username || contact.email} />

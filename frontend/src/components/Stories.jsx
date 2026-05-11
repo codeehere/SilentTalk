@@ -19,7 +19,7 @@ const resolveMedia = (url, API) => {
   return `${API}${url}`;
 };
 
-export default function Stories({ onBack }) {
+export default function Stories({ onBack, initialUserId }) {
   const { authFetch, API, user } = useAuth();
   const [stories, setStories] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -58,7 +58,22 @@ export default function Stories({ onBack }) {
         if (!grouped[uid]) grouped[uid] = { user: s.userId, items: [] };
         grouped[uid].items.push(s);
       });
-      setStories(Object.values(grouped));
+      const storiesArr = Object.values(grouped);
+      setStories(storiesArr);
+
+      // Auto-open requested story
+      if (initialUserId && !selectedGroup) {
+        const targetGroup = storiesArr.find(g => g.user._id?.toString() === initialUserId?.toString());
+        if (targetGroup) {
+          setSelectedGroup(targetGroup);
+          setStoryIndex(0);
+          // Mark viewed
+          const story = targetGroup.items[0];
+          if (story) {
+            authFetch(`${API}/api/stories/${story._id}/view`, { method: 'POST' }).catch(() => {});
+          }
+        }
+      }
     }
   };
 
