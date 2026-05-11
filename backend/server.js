@@ -300,6 +300,15 @@ io.on('connection', async (socket) => {
     io.to(`user:${to}`).emit('call:rejected', { from: userId });
   });
 
+  // ── Mesh: tell an existing peer to open a direct connection to a new participant
+  // A is in a call with B and wants to invite C:
+  //   A → server: call:invite_to_group { to: B_id, inviteUserId: C_id, callType }
+  //   server → B: call:connect_peer    { from: A_id, inviteUserId: C_id, callType }
+  // B then independently creates an offer directly to C (no server relay for media).
+  socket.on('call:invite_to_group', ({ to, inviteUserId, callType }) => {
+    io.to(`user:${to}`).emit('call:connect_peer', { from: userId, inviteUserId, callType });
+  });
+
   // ── Disconnect ───────────────────────────────────────────────────────────
   socket.on('disconnect', async () => {
     onlineUsers.delete(userId.toString());
